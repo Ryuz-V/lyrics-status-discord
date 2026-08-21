@@ -1,0 +1,21 @@
+{
+  "name": "lyric",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@mjba/lyrics": "^1.3.0",
+    "@southctrl/musixmatch-lyrics": "^1.0.3",
+    "axios": "^1.19.0",
+    "dotenv": "^17.4.2",
+    "spotify-web-api-node": "^5.0.2",
+    "ws": "^8.21.3"
+  }
+}
