@@ -1,78 +1,62 @@
 const axios = require('axios');
 
-let musixmatchToken = null;
-
-async function getMusixmatchToken() {
-    if (musixmatchToken) return musixmatchToken;
+async function fetchLrclibLyrics(trackName, artistName, albumName, durationMs) {
     try {
-        const tokenRes = await axios.get('https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
-            headers: { 'User-Agent': 'Musixmatch/3.14.7570 (Windows 10.0; x64) WebView2/115.0.1901.183' }
-        });
-        if (tokenRes.data && tokenRes.data.message && tokenRes.data.message.body) {
-            musixmatchToken = tokenRes.data.message.body.user_token;
-            return musixmatchToken;
+        // First try the exact match endpoint if we have duration
+        if (durationMs) {
+            const response = await axios.get('https://lrclib.net/api/get', {
+                params: {
+                    track_name: trackName,
+                    artist_name: artistName,
+                    album_name: albumName,
+                    duration: Math.round(durationMs / 1000)
+                },
+                headers: {
+                    'User-Agent': 'Spotify-Discord-Lyrics-Sync'
+                }
+            });
+            
+            if (response.data && response.data.syncedLyrics) {
+                return parseLrc(response.data.syncedLyrics);
+            }
         }
     } catch (e) {
-        console.error("[Lyrics] Error getting Musixmatch token:", e.message);
+        // Ignored, fallback to search
     }
-    return null;
-}
 
-async function fetchMusixmatchLyrics(trackName, artistName, isRetry = false) {
-    const token = await getMusixmatchToken();
-    if (!token) return null;
-
+    // Fallback to search endpoint
     try {
-        const response = await axios.get('https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get', {
+        const response = await axios.get('https://lrclib.net/api/search', {
             params: {
-                format: 'json',
-                q_track: trackName,
-                q_artist: artistName,
-                user_language: 'en',
-                namespace: 'lyrics_synched',
-                f_subtitle_length_max_deviation: 1,
-                subtitle_format: 'lrc',
-                app_id: 'web-desktop-app-v1.0',
-                usertoken: token
+                q: `${trackName} ${artistName}`
             },
             headers: {
-                'User-Agent': 'Musixmatch/3.14.7570 (Windows 10.0; x64) WebView2/115.0.1901.183'
+                'User-Agent': 'Spotify-Discord-Lyrics-Sync'
             }
         });
-        
-        const data = response.data;
-        if (data.message && data.message.header && data.message.header.status_code === 401 && !isRetry) {
-            // Token expired or invalid, reset and retry
-            musixmatchToken = null;
-            return await fetchMusixmatchLyrics(trackName, artistName, true);
-        }
 
-        if (data.message && data.message.body && data.message.body.macro_calls) {
-            const macro = data.message.body.macro_calls;
-            const subtitlesReq = macro['track.subtitles.get'];
-            
-            if (subtitlesReq && subtitlesReq.message && subtitlesReq.message.body && subtitlesReq.message.body.subtitle_list) {
-                const subtitles = subtitlesReq.message.body.subtitle_list;
-                if (subtitles.length > 0) {
-                    const lrcString = subtitles[0].subtitle.subtitle_body;
-                    return parseLrc(lrcString);
-                }
+        if (response.data && response.data.length > 0) {
+            // Find the first one with syncedLyrics
+            const match = response.data.find(track => track.syncedLyrics);
+            if (match) {
+                return parseLrc(match.syncedLyrics);
             }
         }
     } catch (e) {
-        console.error("[Lyrics] API Error:", e.message);
+        console.error("[Lyrics] LRCLIB API Error:", e.message);
     }
+    
     return null;
 }
 
 async function fetchLyrics(trackName, artistName, albumName, durationMs) {
-    let lyrics = await fetchMusixmatchLyrics(trackName, artistName);
+    let lyrics = await fetchLrclibLyrics(trackName, artistName, albumName, durationMs);
     
     // If not found, try cleaning up the track name (remove " (with ...)", " (feat. ...)")
     if (!lyrics) {
         const cleanedName = trackName.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*\[.*?\]\s*/g, '').trim();
         if (cleanedName !== trackName) {
-            lyrics = await fetchMusixmatchLyrics(cleanedName, artistName);
+            lyrics = await fetchLrclibLyrics(cleanedName, artistName, albumName, durationMs);
         }
     }
     

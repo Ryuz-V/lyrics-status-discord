@@ -2,7 +2,7 @@ const { startWebSocketServer, getCurrentlyPlaying } = require('./spotify');
 const { fetchLyrics, getCurrentLyric } = require('./lyrics');
 const { updateCustomStatus, clearCustomStatus } = require('./discord');
 
-const POLL_INTERVAL = 3000; // Check state every 3 seconds
+const POLL_INTERVAL = 1000; // Check state every 1 second
 
 let currentTrackId = null;
 let currentLyrics = null;
@@ -41,7 +41,12 @@ async function loop() {
 
         // Update Discord status if we have lyrics
         if (currentLyrics) {
-            const currentLine = getCurrentLyric(currentLyrics, trackInfo.progressMs);
+            const timeSinceUpdate = trackInfo.lastUpdate ? (Date.now() - trackInfo.lastUpdate) : 0;
+            const interpolatedProgressMs = trackInfo.progressMs + timeSinceUpdate;
+            
+            // Adding a 500ms offset to account for Discord API delay
+            const currentLine = getCurrentLyric(currentLyrics, interpolatedProgressMs + 500);
+            
             if (currentLine && currentLine !== lastLyricLine) {
                 lastLyricLine = currentLine;
                 await updateCustomStatus(currentLine);
