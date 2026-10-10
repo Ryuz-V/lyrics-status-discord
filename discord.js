@@ -1,14 +1,10 @@
 const axios = require('axios');
-require('dotenv').config();
 
 const EMOJIS = ['💫', '✨', '🩵', '🐦‍⬛', '🎶', '🎤'];
 
-async function updateCustomStatus(text) {
+async function updateCustomStatus(text, token) {
     const randomEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
-    if (!process.env.DISCORD_TOKEN) {
-        console.error("No Discord token provided.");
-        return;
-    }
+    if (!token) return;
     
     // limit text to 128 characters which is Discord's limit
     const truncatedText = text.length > 128 ? text.substring(0, 125) + '...' : text;
@@ -24,19 +20,16 @@ async function updateCustomStatus(text) {
             },
             {
                 headers: {
-                    'Authorization': process.env.DISCORD_TOKEN,
+                    'Authorization': token,
                     'Content-Type': 'application/json'
                 }
             }
         );
-        console.log(`[Discord] Updated status: ${truncatedText}`);
-    } catch (error) {
-        console.error('[Discord] Failed to update status:', error.response ? error.response.data : error.message);
-    }
+    } catch (error) {}
 }
 
-async function clearCustomStatus() {
-    if (!process.env.DISCORD_TOKEN) return;
+async function clearCustomStatus(token) {
+    if (!token) return;
     try {
         await axios.patch(
             'https://discord.com/api/v9/users/@me/settings',
@@ -45,15 +38,12 @@ async function clearCustomStatus() {
             },
             {
                 headers: {
-                    'Authorization': process.env.DISCORD_TOKEN,
+                    'Authorization': token,
                     'Content-Type': 'application/json'
                 }
             }
         );
-        console.log("[Discord] Cleared status");
-    } catch (error) {
-        console.error('[Discord] Failed to clear status:', error.response ? error.response.data : error.message);
-    }
+    } catch (error) {}
 }
 
 module.exports = { updateCustomStatus, clearCustomStatus };

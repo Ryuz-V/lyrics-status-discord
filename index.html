@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Presync</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="header-menu">
+        <span>File</span>
+        <span>Settings</span>
+        <span>Help</span>
+    </div>
+
+    <div class="container">
+        <!-- Status Header -->
+        <div class="status-bar">
+            <span class="status-indicator disconnected" id="statusDot"></span>
+            <span id="statusText">Disconnected</span>
+        </div>
+
+        <form id="settingsForm">
+            <!-- Discord Section -->
+            <div class="section-title">Discord Settings</div>
+            <div class="form-group">
+                <label for="discordToken">Discord Token</label>
+                <input type="password" id="discordToken" placeholder="Mfa.xyz..." />
+            </div>
+
+            <!-- Spicetify Info -->
+            <div class="section-title">Spotify Tracking</div>
+            <div class="form-group">
+                <span class="helper-text" style="color: #23a559;">✓ Menggunakan Spicetify (Non-Premium)</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <div>
+                    <button type="submit" id="btnConnect" class="btn-primary" disabled>Connect</button>
+                    <button type="button" id="btnDisconnect" class="btn-secondary" disabled>Disconnect</button>
+                </div>
+                <button type="button" id="btnRestart" class="btn-secondary" disabled>Restart</button>
+            </div>
+        </form>
+        
+        <div class="logs" id="logsContainer">
+            <!-- Logs will appear here -->
+            <div class="log-entry">Welcome to Presync!</div>
+        </div>
+    </div>
+    <script src="renderer.js"></script>
+</body>
+</html>
