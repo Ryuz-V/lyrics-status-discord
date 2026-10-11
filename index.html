@@ -11,14 +11,7 @@
         <span>Settings</span>
         <span>Help</span>
     </div>
-
     <div class="container">
-        <!-- Status Header -->
-        <div class="status-bar">
-            <span class="status-indicator disconnected" id="statusDot"></span>
-            <span id="statusText">Disconnected</span>
-        </div>
-
         <form id="settingsForm">
             <!-- Discord Section -->
             <div class="section-title">Discord Settings</div>
@@ -27,13 +20,28 @@
                 <input type="password" id="discordToken" placeholder="Mfa.xyz..." />
             </div>
 
-            <!-- Spicetify Info -->
-            <div class="section-title">Spotify Tracking</div>
-            <div class="form-group">
-                <span class="helper-text" style="color: #23a559;">✓ Menggunakan Spicetify (Non-Premium)</span>
+            <!-- Lyric Status Header with Saklar Switch -->
+            <div class="section-header-row">
+                <div class="section-title">Lyric Status</div>
+                <button type="button" id="lyricToggleBtn" class="saklar-container off" title="Toggle Lyric Status">
+                    <span class="saklar-track">
+                        <span class="saklar-handle"></span>
+                    </span>
+                    <span id="lyricToggleText" class="saklar-label">OFF</span>
+                </button>
             </div>
 
-            <div class="divider"></div>
+            <!-- Collapsible Lyric Sync Section (Spotify Sync to Terminal) -->
+            <div id="lyricSyncContainer" class="hidden">
+                <div class="section-title">Spotify Sync</div>
+                <div class="form-group">
+                    <span class="helper-text" style="color: #23a559;">✓ Menggunakan Spicetify (Non-Premium)</span>
+                </div>
+                <div class="divider"></div>
+                <div class="logs" id="logsContainer">
+                    <div class="log-entry">Welcome to Presync!</div>
+                </div>
+            </div>
 
             <!-- Action Buttons -->
             <div class="action-buttons">
@@ -43,12 +51,13 @@
                 </div>
                 <button type="button" id="btnRestart" class="btn-secondary" disabled>Restart</button>
             </div>
+
+            <!-- Status Indicator -->
+            <div class="status-bar">
+                <span class="status-indicator disconnected" id="statusDot"></span>
+                <span id="statusText">Disconnected</span>
+            </div>
         </form>
-        
-        <div class="logs" id="logsContainer">
-            <!-- Logs will appear here -->
-            <div class="log-entry">Welcome to Presync!</div>
-        </div>
     </div>
     <script src="renderer.js"></script>
 </body>

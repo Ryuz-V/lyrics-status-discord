@@ -42,9 +42,10 @@ let lastLyricLine = null;
 let activeDiscordToken = null;
 
 function createWindow() {
+    const isExpanded = store.get('lyricStatusEnabled', false);
     mainWindow = new BrowserWindow({
         width: 450,
-        height: 500, // Reduced height since we removed Spotify inputs
+        height: isExpanded ? 560 : 290,
         title: "Presync",
         backgroundColor: '#2b2d31',
         resizable: false,
@@ -83,13 +84,21 @@ app.on('window-all-closed', () => {
 // IPC Handlers
 ipcMain.on('request-settings', (event) => {
     const settings = {
-        discordToken: store.get('discordToken', '')
+        discordToken: store.get('discordToken', ''),
+        lyricStatusEnabled: store.get('lyricStatusEnabled', false)
     };
     event.sender.send('load-settings', settings);
 });
 
 ipcMain.on('save-settings', (event, settings) => {
-    if (settings.discordToken) store.set('discordToken', settings.discordToken);
+    if (settings.discordToken !== undefined) store.set('discordToken', settings.discordToken);
+    if (settings.lyricStatusEnabled !== undefined) store.set('lyricStatusEnabled', settings.lyricStatusEnabled);
+});
+
+ipcMain.on('resize-window', (event, { expanded }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setSize(450, expanded ? 560 : 290);
+    }
 });
 
 ipcMain.on('start-sync', async (event) => {

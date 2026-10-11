@@ -34,26 +34,28 @@ body {
 }
 
 .container {
-    padding: 20px;
+    padding: 16px 20px;
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .status-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-    font-size: 14px;
-    font-weight: 600;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 11px;
+    color: #949ba4;
+    font-weight: 500;
 }
 
 .status-indicator {
-    width: 12px;
-    height: 12px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
+    display: inline-block;
 }
 
 .connected { background-color: #23a559; }
@@ -64,14 +66,14 @@ body {
     text-transform: uppercase;
     font-weight: bold;
     color: #949ba4;
-    margin-bottom: 10px;
-    margin-top: 15px;
+    margin-bottom: 8px;
+    margin-top: 10px;
 }
 
 .form-group {
     display: flex;
     flex-direction: column;
-    margin-bottom: 15px;
+    margin-bottom: 12px;
 }
 
 label {
@@ -98,13 +100,100 @@ input[type="text"]:focus, input[type="password"]:focus {
 .divider {
     height: 1px;
     background-color: #3f4147;
-    margin: 20px 0;
+    margin: 14px 0;
+}
+
+.section-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+    margin-bottom: 8px;
+}
+
+.section-header-row .section-title {
+    margin: 0;
+}
+
+.saklar-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.saklar-track {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 3px;
+    background-color: #4e5058;
+    display: inline-block;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+    box-sizing: border-box;
+}
+
+.saklar-handle {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* OFF State: Gray (#4e5058), handle on the left */
+.saklar-container.off .saklar-track {
+    background-color: #4e5058;
+}
+
+.saklar-container.off .saklar-handle {
+    transform: translateX(0);
+}
+
+.saklar-container.off .saklar-label {
+    color: #949ba4;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* ON State: Blue (#5865f2), handle slides to the right */
+.saklar-container.on .saklar-track {
+    background-color: #5865f2;
+}
+
+.saklar-container.on .saklar-handle {
+    transform: translateX(18px);
+}
+
+.saklar-container.on .saklar-label {
+    color: #5865f2;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.saklar-container:hover .saklar-track {
+    opacity: 0.85;
+}
+
+.hidden {
+    display: none !important;
 }
 
 .action-buttons {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-top: 15px;
+    margin-bottom: 0px;
 }
 
 .action-buttons div {
@@ -137,18 +226,20 @@ button:hover:not(:disabled) {
 .helper-text {
     font-size: 12px;
     color: #949ba4;
-    margin-top: 5px;
+    margin-top: 4px;
 }
 
 .logs {
     background-color: #1e1f22;
+    border: 1px solid #111214;
     border-radius: 4px;
     padding: 10px;
-    height: 150px;
+    height: 135px;
     overflow-y: auto;
     font-family: 'Consolas', monospace;
     font-size: 12px;
     color: #949ba4;
+    margin-bottom: 0px;
 }
 
 .log-entry { margin-bottom: 3px; }
