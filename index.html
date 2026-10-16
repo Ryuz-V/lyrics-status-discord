@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Presync</title>
+    <title>Presync 1.0.0</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -19,6 +19,33 @@
                 <label for="discordToken">Discord Token</label>
                 <input type="password" id="discordToken" placeholder="Mfa.xyz..." />
             </div>
+            <div class="form-group">
+                <label for="rpcAppId">ID</label>
+                <input type="text" id="rpcAppId" placeholder="1444178398372036789" />
+            </div>
+
+            <div class="section-title">Custom Status</div>
+
+            <div class="form-group">
+                <label for="rpcName">Text 1</label>
+                <input type="text" id="rpcName" placeholder="Playing Games" />
+            </div>
+            <div class="form-group">
+                <label for="rpcName">Text 2</label>
+                <input type="text" id="rpcName" placeholder="Streaming Youtube" />
+            </div>
+            <div class="form-group">
+                <label for="rpcName">Text 3</label>
+                <input type="text" id="rpcName" placeholder="Listening Music" />
+            </div>
+                <!-- Party -->
+                <div class="form-group">
+                    <label>Time Changed</label>
+                    <div class="party-row">
+                        <span>Time</span>
+                        <input type="number" id="rpcPartyCur" min="0" value="0" />
+                    </div>
+                </div>
 
             <!-- Lyric Status Header with Saklar Switch -->
             <div class="section-header-row">
@@ -31,9 +58,7 @@
                 </button>
             </div>
 
-            <!-- Collapsible Lyric Sync Section (Spotify Sync to Terminal) -->
             <div id="lyricSyncContainer" class="hidden">
-                <div class="section-title">Spotify Sync</div>
                 <div class="form-group">
                     <span class="helper-text" style="color: #23a559;">✓ Menggunakan Spicetify (Non-Premium)</span>
                 </div>
@@ -48,6 +73,7 @@
                 <div>
                     <button type="submit" id="btnConnect" class="btn-primary" disabled>Connect</button>
                     <button type="button" id="btnDisconnect" class="btn-secondary" disabled>Disconnect</button>
+                    <button type="button" id="btnUpdatePresence" class="btn-secondary" disabled>Update Presence</button>
                 </div>
                 <button type="button" id="btnRestart" class="btn-secondary" disabled>Restart</button>
             </div>
