@@ -38,6 +38,15 @@ body {
     color: #ffffff;
 }
 
+/* App Form Layout */
+.app-layout {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
 /* Scrollable Container */
 .container {
     padding: 16px 20px;
@@ -46,6 +55,7 @@ body {
     overflow-x: hidden;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 /* Discord Themed Custom Scrollbar */
@@ -75,6 +85,26 @@ body {
     font-size: 12px;
     color: #949ba4;
     font-weight: 500;
+    margin-left: 1px;
+}
+
+/* Sticky Bottom Footer */
+.footer-sticky {
+    flex-shrink: 0;
+    background-color: #1e1f22;
+    border-top: 1px solid #111214;
+    padding: 12px 20px 10px 20px;
+    box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+}
+
+.footer-sticky .action-buttons {
+    margin-top: 0;
+}
+
+.footer-sticky .status-bar {
+    margin-top: 8px;
+    padding-bottom: 2px;
 }
 
 .status-indicator {
@@ -93,8 +123,12 @@ body {
     font-weight: bold;
     color: #949ba4;
     margin-bottom: 8px;
-    margin-top: 10px;
+    margin-top: 20px;
     letter-spacing: 0.5px;
+}
+
+.section-title:first-child {
+    margin-top: 4px;
 }
 
 .sub-section-title {
@@ -199,7 +233,7 @@ select {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 14px;
+    margin-top: 20px;
     margin-bottom: 8px;
 }
 

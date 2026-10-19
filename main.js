@@ -53,10 +53,16 @@ let syncInterval = null;
 let isWebSocketStarted = false;
 
 // State variables for loop
+let activeDiscordToken = null;
 let currentTrackId = null;
 let currentLyrics = null;
 let lastLyricLine = null;
-let activeDiscordToken = null;
+
+// Custom status rotation state
+let activeStatusMode = null; // 'music' | 'custom' | null
+let currentCustomIndex = 0;
+let lastRotationTime = 0;
+let lastCustomTextApplied = null;
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -97,7 +103,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
     const rpc = getDiscordRPC();
-    if (rpc.connected) {
+    if (rpc && rpc.connected) {
         rpc.disconnect();
     }
     if (process.platform !== 'darwin') {
@@ -105,53 +111,18 @@ app.on('window-all-closed', () => {
     }
 });
 
-function getSavedRpcOptions() {
-    const token = store.get('discordToken', '') || process.env.DISCORD_TOKEN || '';
-    const tokenExtractedId = extractDiscordId(token);
-    const defaultAppId = tokenExtractedId || '1444178398372036789';
-    const rawAppId = store.get('rpcAppId');
-    const finalAppId = rawAppId ? extractDiscordId(rawAppId) : defaultAppId;
-
-    return {
-        appId: finalAppId || defaultAppId,
-        type: store.get('rpcType', 'listening'),
-        display: store.get('rpcDisplay', 'name'),
-        name: store.get('rpcName', 'Print("Hello World")'),
-        details: store.get('rpcDetails', ''),
-        detailsUrl: store.get('rpcDetailsUrl', ''),
-        state: store.get('rpcState', ''),
-        stateUrl: store.get('rpcStateUrl', ''),
-        partyCurrent: store.get('rpcPartyCur', '0'),
-        partyMax: store.get('rpcPartyMax', '0'),
-        timestampType: store.get('rpcTimestampType', 'local_time'),
-        customStart: store.get('rpcCustomStart', ''),
-        customEnd: store.get('rpcCustomEnd', ''),
-        largeImageKey: store.get('rpcLargeImageKey', 'https://media.tenor.com/f3bU7-6jBvYAAAAC/anime-girl-typing.gif'),
-        largeImageText: store.get('rpcLargeImageText', ''),
-        largeImageUrl: store.get('rpcLargeImageUrl', ''),
-        smallImageKey: store.get('rpcSmallImageKey', ''),
-        smallImageText: store.get('rpcSmallImageText', ''),
-        smallImageUrl: store.get('rpcSmallImageUrl', ''),
-        button1Text: store.get('rpcButton1Text', 'Github'),
-        button1Url: store.get('rpcButton1Url', 'https://github.com/Ryuz-V'),
-        button2Text: store.get('rpcButton2Text', 'Store'),
-        button2Url: store.get('rpcButton2Url', '')
-    };
-}
-
 // IPC Handlers
 ipcMain.on('request-settings', (event) => {
     const token = store.get('discordToken', '') || process.env.DISCORD_TOKEN || '';
     const defaultAppId = extractDiscordId(token) || '1444178398372036789';
-    const rpcOpts = getSavedRpcOptions();
-    if (!rpcOpts.appId || rpcOpts.appId === '1444178398372036789') {
-        rpcOpts.appId = defaultAppId;
-    }
     const settings = {
         discordToken: token,
-        lyricStatusEnabled: store.get('lyricStatusEnabled', false),
-        customRpEnabled: store.get('customRpEnabled', true),
-        ...rpcOpts
+        rpcAppId: store.get('rpcAppId', defaultAppId),
+        customText1: store.get('customText1', ''),
+        customText2: store.get('customText2', ''),
+        customText3: store.get('customText3', ''),
+        customTime: store.get('customTime', '0'),
+        lyricStatusEnabled: store.get('lyricStatusEnabled', false)
     };
     event.sender.send('load-settings', settings);
 });
@@ -165,169 +136,120 @@ ipcMain.on('save-settings', (event, settings) => {
     }
 });
 
-ipcMain.on('start-sync', async (event, rpcOptions) => {
-    const customRpEnabled = store.get('customRpEnabled', true);
-    const lyricStatusEnabled = store.get('lyricStatusEnabled', false);
-
-    let hasStartedAny = false;
-    let rpcUser = null;
-
-    // 1. Handle Custom RP
-    if (customRpEnabled) {
-        const rawAppId = (rpcOptions && rpcOptions.appId) ? rpcOptions.appId : store.get('rpcAppId');
-        const token = store.get('discordToken', '') || process.env.DISCORD_TOKEN || '';
-        const appId = extractDiscordId(rawAppId) || extractDiscordId(token) || '1444178398372036789';
-        
-        if (!appId) {
-            logToUI("Custom RP: Missing Application / Discord ID!", "error");
-        } else {
-            try {
-                logToUI("Connecting to Discord RPC...", "info");
-                const rpc = getDiscordRPC();
-                rpcUser = await rpc.findAndConnect(appId);
-                const username = rpcUser ? rpcUser.username : 'Discord User';
-                logToUI(`Discord RPC Connected as ${username}`, "success");
-
-                const activityOptions = rpcOptions || getSavedRpcOptions();
-                rpc.setActivity(activityOptions);
-                logToUI(`Custom RP Activity set: ${activityOptions.type || 'Listening'} ${activityOptions.name || ''}`, "info");
-                hasStartedAny = true;
-            } catch (err) {
-                logToUI(`Custom RP Error: ${err.message}`, "error");
+ipcMain.on('start-sync', async (event, settings) => {
+    // Save settings if provided
+    if (settings && typeof settings === 'object') {
+        for (const [key, val] of Object.entries(settings)) {
+            if (val !== undefined) {
+                store.set(key, val);
             }
         }
     }
 
-    // 2. Handle Lyric Status
-    if (lyricStatusEnabled) {
-        activeDiscordToken = store.get('discordToken') || process.env.DISCORD_TOKEN;
-        if (!activeDiscordToken) {
-            logToUI("Lyric Status: Missing Discord Token!", "error");
-        } else {
-            if (!isWebSocketStarted) {
-                startWebSocketServer();
-                isWebSocketStarted = true;
-                logToUI("Started Spicetify WebSocket Server on port 8974", "info");
-            }
-
-            if (syncInterval) clearInterval(syncInterval);
-            logToUI("Starting Spotify-Discord Lyrics Sync...", "info");
-            syncInterval = setInterval(syncLoop, 1000);
-            hasStartedAny = true;
-        }
-    }
-
-    if (hasStartedAny) {
-        event.sender.send('state-update', {
-            connected: true,
-            user: rpcUser ? rpcUser.username : null
-        });
-    } else {
+    activeDiscordToken = (settings && settings.discordToken) || store.get('discordToken') || process.env.DISCORD_TOKEN;
+    if (!activeDiscordToken) {
+        logToUI("Missing Discord Token! Please enter your token in Settings.", "error");
         event.sender.send('state-update', { connected: false });
+        return;
     }
-});
 
-ipcMain.on('toggle-custom-rp', async (event, { enabled, rpcOptions }) => {
-    store.set('customRpEnabled', enabled);
-    const rpc = getDiscordRPC();
+    // Start WebSocket server for Spicetify if not already running
+    if (!isWebSocketStarted) {
+        startWebSocketServer();
+        isWebSocketStarted = true;
+        logToUI("Started Spicetify WebSocket Server on port 8974", "info");
+    }
 
-    if (enabled) {
-        logToUI("Turning ON Custom RP...", "info");
-        const rawAppId = (rpcOptions && rpcOptions.appId) ? rpcOptions.appId : store.get('rpcAppId');
-        const token = store.get('discordToken', '') || process.env.DISCORD_TOKEN || '';
-        const appId = extractDiscordId(rawAppId) || extractDiscordId(token) || '1444178398372036789';
-
-        try {
-            if (!rpc.connected) {
-                const rpcUser = await rpc.findAndConnect(appId);
-                const username = rpcUser ? rpcUser.username : 'Discord User';
-                logToUI(`Discord RPC Connected as ${username}`, "success");
+    // Try optional Discord RPC Desktop connection
+    const rawAppId = (settings && settings.rpcAppId) || store.get('rpcAppId');
+    const appId = extractDiscordId(rawAppId) || extractDiscordId(activeDiscordToken) || '1444178398372036789';
+    let rpcUser = null;
+    try {
+        const rpc = getDiscordRPC();
+        if (!rpc.connected && appId) {
+            rpcUser = await rpc.findAndConnect(appId);
+            if (rpcUser) {
+                logToUI(`Discord RPC Connected as ${rpcUser.username}`, "success");
             }
-            const activityOptions = rpcOptions || getSavedRpcOptions();
-            rpc.setActivity(activityOptions);
-            logToUI(`Custom RP Activity set: ${activityOptions.type || 'Listening'} ${activityOptions.name || ''}`, "success");
-
-            event.sender.send('state-update', {
-                connected: true,
-                user: rpc.currentUser ? rpc.currentUser.username : null
-            });
-        } catch (err) {
-            logToUI(`Custom RP Error: ${err.message}`, "error");
         }
-    } else {
-        logToUI("Turning OFF Custom RP...", "info");
-        if (rpc.connected) {
-            rpc.clearActivity();
-            rpc.disconnect();
-            logToUI("Custom RP disabled and activity cleared.", "info");
-        }
-        const lyricEnabled = store.get('lyricStatusEnabled', false);
-        if (!lyricEnabled || !syncInterval) {
-            event.sender.send('state-update', { connected: false });
-        }
+    } catch (e) {
+        // Desktop RPC is optional, ignore failure
     }
+
+    // Reset loop variables
+    if (syncInterval) clearInterval(syncInterval);
+    currentTrackId = null;
+    currentLyrics = null;
+    lastLyricLine = null;
+    activeStatusMode = null;
+    currentCustomIndex = 0;
+    lastRotationTime = 0;
+    lastCustomTextApplied = null;
+
+    logToUI("Connected! Status monitoring started.", "success");
+    syncInterval = setInterval(syncLoop, 1000);
+
+    // Run first tick immediately
+    syncLoop();
+
+    event.sender.send('state-update', {
+        connected: true,
+        user: rpcUser ? rpcUser.username : null
+    });
 });
 
 ipcMain.on('toggle-lyric-status', async (event, { enabled }) => {
     store.set('lyricStatusEnabled', enabled);
 
     if (enabled) {
-        logToUI("Turning ON Lyric Status...", "info");
-        activeDiscordToken = store.get('discordToken') || process.env.DISCORD_TOKEN;
-        if (!activeDiscordToken) {
-            logToUI("Lyric Status: Missing Discord Token!", "error");
-            return;
-        }
-
+        logToUI("Lyric Status enabled: Spotify music will be prioritized when playing.", "info");
         if (!isWebSocketStarted) {
             startWebSocketServer();
             isWebSocketStarted = true;
             logToUI("Started Spicetify WebSocket Server on port 8974", "info");
         }
-
-        if (syncInterval) clearInterval(syncInterval);
-        logToUI("Starting Spotify-Discord Lyrics Sync...", "info");
-        syncInterval = setInterval(syncLoop, 1000);
-
-        event.sender.send('state-update', { connected: true });
     } else {
-        logToUI("Turning OFF Lyric Status...", "info");
-        if (syncInterval) {
-            clearInterval(syncInterval);
-            syncInterval = null;
-        }
-        activeDiscordToken = store.get('discordToken') || process.env.DISCORD_TOKEN;
-        if (activeDiscordToken && lastLyricLine !== null) {
-            await clearCustomStatus(activeDiscordToken);
+        logToUI("Lyric Status disabled: Using Custom Status texts.", "info");
+        if (activeStatusMode === 'music') {
+            activeStatusMode = null;
             lastLyricLine = null;
-            logToUI("Cleared Discord custom status.", "info");
-        }
-        const rpc = getDiscordRPC();
-        const rpcEnabled = store.get('customRpEnabled', false);
-        if (!rpcEnabled || !rpc.connected) {
-            event.sender.send('state-update', { connected: false });
+            currentTrackId = null;
+            currentLyrics = null;
+            lastRotationTime = 0;
+            lastCustomTextApplied = null;
+            if (syncInterval) {
+                syncLoop();
+            }
         }
     }
 });
 
-ipcMain.on('update-presence', async (event, rpcOptions) => {
-    const rpc = getDiscordRPC();
-    const rawAppId = (rpcOptions && rpcOptions.appId) ? rpcOptions.appId : store.get('rpcAppId');
-    const token = store.get('discordToken', '') || process.env.DISCORD_TOKEN || '';
-    const appId = extractDiscordId(rawAppId) || extractDiscordId(token) || '1444178398372036789';
-
-    if (!rpc.connected) {
-        try {
-            await rpc.findAndConnect(appId);
-        } catch (e) {}
+ipcMain.on('update-presence', async (event, settings) => {
+    if (settings && typeof settings === 'object') {
+        for (const [key, val] of Object.entries(settings)) {
+            if (val !== undefined) {
+                store.set(key, val);
+            }
+        }
     }
 
-    if (rpc.connected) {
-        const activityOptions = rpcOptions || getSavedRpcOptions();
-        rpc.setActivity(activityOptions);
-        logToUI("Custom RP Presence updated!", "success");
+    if (!syncInterval) {
+        logToUI("Settings saved. (Click Connect to activate status)", "info");
+        return;
+    }
+
+    // If currently on custom status, immediately trigger update
+    const isLyricEnabled = store.get('lyricStatusEnabled', false);
+    const trackInfo = getCurrentlyPlaying();
+    const isMusicPlaying = isLyricEnabled && trackInfo && trackInfo.isPlaying;
+
+    if (!isMusicPlaying) {
+        lastRotationTime = 0;
+        lastCustomTextApplied = null;
+        logToUI("Custom Status refreshed!", "success");
+        syncLoop();
     } else {
-        logToUI("Custom RP is not connected.", "error");
+        logToUI("Settings saved. Currently playing Spotify music.", "info");
     }
 });
 
@@ -337,16 +259,21 @@ ipcMain.on('stop-sync', async (event) => {
         syncInterval = null;
     }
 
-    if (lastLyricLine !== null) {
+    if (activeDiscordToken) {
         await clearCustomStatus(activeDiscordToken);
-        lastLyricLine = null;
+        logToUI("Custom status cleared from Discord.", "info");
     }
 
     currentTrackId = null;
     currentLyrics = null;
+    lastLyricLine = null;
+    activeStatusMode = null;
+    currentCustomIndex = 0;
+    lastRotationTime = 0;
+    lastCustomTextApplied = null;
 
     const rpc = getDiscordRPC();
-    if (rpc.connected) {
+    if (rpc && rpc.connected) {
         rpc.disconnect();
     }
 
@@ -356,42 +283,117 @@ ipcMain.on('stop-sync', async (event) => {
 
 async function syncLoop() {
     try {
-        const trackInfo = getCurrentlyPlaying(); // synchronous for spicetify
+        if (!activeDiscordToken) return;
 
-        if (!trackInfo || !trackInfo.isPlaying) {
-            if (lastLyricLine !== null) {
-                await clearCustomStatus(activeDiscordToken);
+        const isLyricEnabled = store.get('lyricStatusEnabled', false);
+        const trackInfo = getCurrentlyPlaying();
+        const isMusicPlaying = isLyricEnabled && trackInfo && trackInfo.isPlaying;
+
+        if (isMusicPlaying) {
+            // ========================================================
+            // PRIORITAS 1: Musik Spotify Sedang Berputar
+            // ========================================================
+            if (activeStatusMode !== 'music') {
+                activeStatusMode = 'music';
+                lastCustomTextApplied = null;
+                logToUI(`[Priority] Spotify music detected, prioritizing music status.`, "info");
+            }
+
+            // Cek apakah lagu berubah
+            if (trackInfo.id !== currentTrackId) {
+                currentTrackId = trackInfo.id;
                 lastLyricLine = null;
+                logToUI(`Now playing: ${trackInfo.name} by ${trackInfo.artist}`, "info");
+
+                currentLyrics = await fetchLyrics(trackInfo.name, trackInfo.artist, trackInfo.album, trackInfo.durationMs);
+                if (!currentLyrics) {
+                    logToUI(`No synced lyrics found for "${trackInfo.name}". Showing track name.`, "info");
+                    const trackDisplay = `🎵 ${trackInfo.name} - ${trackInfo.artist}`;
+                    if (trackDisplay !== lastLyricLine) {
+                        lastLyricLine = trackDisplay;
+                        await updateCustomStatus(trackDisplay, activeDiscordToken);
+                        logToUI(`Status: ${trackDisplay}`);
+                    }
+                } else {
+                    logToUI(`Found synced lyrics for "${trackInfo.name}"`, "success");
+                }
+            }
+
+            // Update lirik jika lirik tersedia
+            if (currentLyrics) {
+                const timeSinceUpdate = trackInfo.lastUpdate ? (Date.now() - trackInfo.lastUpdate) : 0;
+                const interpolatedProgressMs = trackInfo.progressMs + timeSinceUpdate;
+                const currentLine = getCurrentLyric(currentLyrics, interpolatedProgressMs + 500);
+
+                if (currentLine && currentLine !== lastLyricLine) {
+                    lastLyricLine = currentLine;
+                    await updateCustomStatus(currentLine, activeDiscordToken);
+                    logToUI(`Status: ${currentLine}`);
+                }
+            }
+        } else {
+            // ========================================================
+            // PRIORITAS 2: Musik Berhenti / Dijeda (Custom Status Text)
+            // ========================================================
+            if (activeStatusMode === 'music') {
+                logToUI("Music paused/stopped. Switching to Custom Status texts...", "info");
                 currentTrackId = null;
                 currentLyrics = null;
-                logToUI("Music paused, cleared status.", "info");
-            }
-            return;
-        }
-
-        if (trackInfo.id !== currentTrackId) {
-            currentTrackId = trackInfo.id;
-            logToUI(`Now playing: ${trackInfo.name} by ${trackInfo.artist}`, "info");
-
-            currentLyrics = await fetchLyrics(trackInfo.name, trackInfo.artist, trackInfo.album, trackInfo.durationMs);
-            if (!currentLyrics) {
-                logToUI(`No synced lyrics found for ${trackInfo.name}`, "error");
-                await clearCustomStatus(activeDiscordToken);
                 lastLyricLine = null;
-            } else {
-                logToUI(`Found synced lyrics for ${trackInfo.name}`, "success");
+                activeStatusMode = 'custom';
+                lastRotationTime = 0; // Langsung tampilkan teks tanpa tunggu rotasi
+                currentCustomIndex = 0;
+                lastCustomTextApplied = null;
+            } else if (activeStatusMode === null) {
+                activeStatusMode = 'custom';
+                lastRotationTime = 0;
+                currentCustomIndex = 0;
+                lastCustomTextApplied = null;
             }
-        }
 
-        if (currentLyrics) {
-            const timeSinceUpdate = trackInfo.lastUpdate ? (Date.now() - trackInfo.lastUpdate) : 0;
-            const interpolatedProgressMs = trackInfo.progressMs + timeSinceUpdate;
-            const currentLine = getCurrentLyric(currentLyrics, interpolatedProgressMs + 500);
+            // Kumpulkan teks non-kosong dari Text 1, 2, 3
+            const t1 = (store.get('customText1', '') || '').trim();
+            const t2 = (store.get('customText2', '') || '').trim();
+            const t3 = (store.get('customText3', '') || '').trim();
+            const customTexts = [t1, t2, t3].filter(t => t.length > 0);
 
-            if (currentLine && currentLine !== lastLyricLine) {
-                lastLyricLine = currentLine;
-                await updateCustomStatus(currentLine, activeDiscordToken);
-                logToUI(`Status: ${currentLine}`);
+            if (customTexts.length === 0) {
+                // Semua teks custom kosong
+                if (lastCustomTextApplied !== null) {
+                    await clearCustomStatus(activeDiscordToken);
+                    lastCustomTextApplied = null;
+                    logToUI("No custom text provided, status cleared.", "info");
+                }
+                return;
+            }
+
+            // Hitung interval rotasi berdasarkan Time Changed (1 = 10 detik)
+            const rawTime = parseInt(store.get('customTime', '0'), 10);
+            const timeMultiplier = (!isNaN(rawTime) && rawTime > 0) ? rawTime : 1;
+            const rotationIntervalMs = timeMultiplier * 10 * 1000;
+
+            const now = Date.now();
+            let shouldUpdate = false;
+
+            if (lastRotationTime === 0 || lastCustomTextApplied === null) {
+                // Pertama kali aktif atau baru beralih dari musik
+                currentCustomIndex = 0;
+                lastRotationTime = now;
+                shouldUpdate = true;
+            } else if (customTexts.length > 1 && (now - lastRotationTime) >= rotationIntervalMs) {
+                // Waktunya rotasi ke teks berikutnya
+                currentCustomIndex = (currentCustomIndex + 1) % customTexts.length;
+                lastRotationTime = now;
+                shouldUpdate = true;
+            }
+
+            const targetText = customTexts[currentCustomIndex % customTexts.length];
+
+            // Kirim ke Discord jika rotasi terjadi atau teks berbeda dari yang sedang aktif
+            if (shouldUpdate || targetText !== lastCustomTextApplied) {
+                lastCustomTextApplied = targetText;
+                await updateCustomStatus(targetText, activeDiscordToken);
+                logToUI(`[Custom Status (${(currentCustomIndex % customTexts.length) + 1}/${customTexts.length})]: ${targetText}`, "success");
             }
         }
     } catch (error) {

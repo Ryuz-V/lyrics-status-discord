@@ -11,8 +11,8 @@
         <span>Settings</span>
         <span>Help</span>
     </div>
-    <div class="container">
-        <form id="settingsForm">
+    <form id="settingsForm" class="app-layout">
+        <div class="container">
             <!-- Discord Section -->
             <div class="section-title">Discord Settings</div>
             <div class="form-group">
@@ -27,25 +27,25 @@
             <div class="section-title">Custom Status</div>
 
             <div class="form-group">
-                <label for="rpcName">Text 1</label>
-                <input type="text" id="rpcName" placeholder="Playing Games" />
+                <label for="customText1">Text 1</label>
+                <input type="text" id="customText1" placeholder="Playing Games" />
             </div>
             <div class="form-group">
-                <label for="rpcName">Text 2</label>
-                <input type="text" id="rpcName" placeholder="Streaming Youtube" />
+                <label for="customText2">Text 2</label>
+                <input type="text" id="customText2" placeholder="Streaming Youtube" />
             </div>
             <div class="form-group">
-                <label for="rpcName">Text 3</label>
-                <input type="text" id="rpcName" placeholder="Listening Music" />
+                <label for="customText3">Text 3</label>
+                <input type="text" id="customText3" placeholder="Listening Music" />
             </div>
-                <!-- Party -->
-                <div class="form-group">
-                    <label>Time Changed</label>
-                    <div class="party-row">
-                        <span>Time</span>
-                        <input type="number" id="rpcPartyCur" min="0" value="0" />
-                    </div>
+            <!-- Time Changed -->
+            <div class="form-group">
+                <label for="customTime">Time Changed</label>
+                <div class="party-row">
+                    <span>Time</span>
+                    <input type="number" id="customTime" min="0" value="0" />
                 </div>
+            </div>
 
             <!-- Lyric Status Header with Saklar Switch -->
             <div class="section-header-row">
@@ -67,8 +67,10 @@
                     <div class="log-entry">Welcome to Presync!</div>
                 </div>
             </div>
+        </div>
 
-            <!-- Action Buttons -->
+        <!-- Sticky Footer -->
+        <div class="footer-sticky">
             <div class="action-buttons">
                 <div>
                     <button type="submit" id="btnConnect" class="btn-primary" disabled>Connect</button>
@@ -83,8 +85,8 @@
                 <span class="status-indicator disconnected" id="statusDot"></span>
                 <span id="statusText">Disconnected</span>
             </div>
-        </form>
-    </div>
+        </div>
+    </form>
     <script src="renderer.js"></script>
 </body>
 </html>
