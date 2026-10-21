@@ -1,5 +1,14 @@
 const axios = require('axios');
 
+// In-Memory Lyrics Cache
+const lyricsCache = new Map();
+
+function getCacheKey(trackName, artistName) {
+    const t = (trackName || '').trim().toLowerCase();
+    const a = (artistName || '').trim().toLowerCase();
+    return `${a}___${t}`;
+}
+
 async function fetchLrclibLyrics(trackName, artistName, albumName, durationMs) {
     try {
         // First try the exact match endpoint if we have duration
@@ -13,7 +22,8 @@ async function fetchLrclibLyrics(trackName, artistName, albumName, durationMs) {
                 },
                 headers: {
                     'User-Agent': 'Spotify-Discord-Lyrics-Sync'
-                }
+                },
+                timeout: 5000
             });
             
             if (response.data && response.data.syncedLyrics) {
@@ -32,7 +42,8 @@ async function fetchLrclibLyrics(trackName, artistName, albumName, durationMs) {
             },
             headers: {
                 'User-Agent': 'Spotify-Discord-Lyrics-Sync'
-            }
+            },
+            timeout: 5000
         });
 
         if (response.data && response.data.length > 0) {
@@ -50,17 +61,37 @@ async function fetchLrclibLyrics(trackName, artistName, albumName, durationMs) {
 }
 
 async function fetchLyrics(trackName, artistName, albumName, durationMs) {
+    if (!trackName) return null;
+
+    const cacheKey = getCacheKey(trackName, artistName);
+    if (lyricsCache.has(cacheKey)) {
+        return lyricsCache.get(cacheKey);
+    }
+
     let lyrics = await fetchLrclibLyrics(trackName, artistName, albumName, durationMs);
     
-    // If not found, try cleaning up the track name (remove " (with ...)", " (feat. ...)")
+    // If not found, try sanitizing track name (remove "feat", "remastered", "official video", etc.)
     if (!lyrics) {
-        const cleanedName = trackName.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*\[.*?\]\s*/g, '').trim();
-        if (cleanedName !== trackName) {
+        const cleanedName = trackName
+            .replace(/\s*\(.*?(feat|with|remaster|deluxe|version|live|explicit|official).*?\)/gi, '')
+            .replace(/\s*\[.*?(feat|with|remaster|deluxe|version|live|explicit|official).*?\]/gi, '')
+            .replace(/\s*-\s*(remastered|deluxe|live|radio edit|single version).*$/gi, '')
+            .replace(/\s*\(.*?\)\s*/g, '')
+            .replace(/\s*\[.*?\]\s*/g, '')
+            .trim();
+
+        if (cleanedName && cleanedName.toLowerCase() !== trackName.toLowerCase()) {
             lyrics = await fetchLrclibLyrics(cleanedName, artistName, albumName, durationMs);
         }
     }
-    
+
+    // Cache the result in memory (including null to avoid hammering LRCLIB for instrumental/unfound tracks)
+    lyricsCache.set(cacheKey, lyrics);
     return lyrics;
+}
+
+function clearLyricsCache() {
+    lyricsCache.clear();
 }
 
 function parseLrc(lrcString) {
@@ -102,4 +133,4 @@ function getCurrentLyric(lyrics, progressMs) {
     return currentLine;
 }
 
-module.exports = { fetchLyrics, getCurrentLyric };
+module.exports = { fetchLyrics, getCurrentLyric, clearLyricsCache };

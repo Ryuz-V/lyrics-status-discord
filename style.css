@@ -14,30 +14,6 @@ body {
     flex-direction: column;
 }
 
-.header-menu {
-    background-color: #1e1f22;
-    padding: 6px 12px;
-    font-size: 13px;
-    border-bottom: 1px solid #111214;
-    display: flex;
-    gap: 15px;
-    user-select: none;
-    flex-shrink: 0;
-}
-
-.header-menu span {
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 3px;
-    color: #949ba4;
-    font-size: 12px;
-}
-
-.header-menu span:hover {
-    background-color: #3f4147;
-    color: #ffffff;
-}
-
 /* App Form Layout */
 .app-layout {
     flex: 1;
@@ -152,6 +128,13 @@ label {
     margin-bottom: 4px;
     color: #b5bac1;
     font-weight: 500;
+}
+
+.helper-text {
+    font-size: 11px;
+    color: #949ba4;
+    margin-top: 4px;
+    line-height: 1.3;
 }
 
 input[type="text"],

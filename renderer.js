@@ -1,6 +1,8 @@
 const { ipcRenderer } = require('electron');
 
 // DOM Elements - Discord Settings
+const statusDisplayMode = document.getElementById('statusDisplayMode');
+const modeHelper = document.getElementById('modeHelper');
 const discordTokenInput = document.getElementById('discordToken');
 const rpcAppId = document.getElementById('rpcAppId');
 
@@ -10,15 +12,18 @@ const customText2 = document.getElementById('customText2');
 const customText3 = document.getElementById('customText3');
 const customTime = document.getElementById('customTime');
 
-// DOM Elements - Lyric Status Toggle
+// DOM Elements - Lyric Status & Media Source
 const lyricToggleBtn = document.getElementById('lyricToggleBtn');
 const lyricToggleText = document.getElementById('lyricToggleText');
 const lyricSyncContainer = document.getElementById('lyricSyncContainer');
+const mediaSourceSelect = document.getElementById('mediaSourceSelect');
+const mediaSourceHelper = document.getElementById('mediaSourceHelper');
+const lyricsOffsetInput = document.getElementById('lyricsOffset');
+const offsetValueText = document.getElementById('offsetValueText');
 
 // DOM Elements - Actions & Status
 const btnConnect = document.getElementById('btnConnect');
 const btnDisconnect = document.getElementById('btnDisconnect');
-const btnUpdatePresence = document.getElementById('btnUpdatePresence');
 const btnRestart = document.getElementById('btnRestart');
 
 const statusDot = document.getElementById('statusDot');
@@ -43,6 +48,39 @@ function extractDiscordId(tokenOrId) {
     return tokenOrId;
 }
 
+function updateModeUI() {
+    const mode = statusDisplayMode ? statusDisplayMode.value : 'both';
+    if (modeHelper) {
+        if (mode === 'both') {
+            modeHelper.innerText = 'Menampilkan lirik di status profil dan Rich Presence (Aman).';
+        } else if (mode === 'custom_status') {
+            modeHelper.innerText = 'Hanya tampil di status profil (butuh Discord Token).';
+        } else if (mode === 'rpc') {
+            modeHelper.innerText = 'Hanya tampil di Discord Rich Presence (100% aman, tanpa token).';
+        }
+    }
+    if (discordTokenInput) {
+        if (mode === 'rpc') {
+            discordTokenInput.placeholder = 'Optional for RPC Mode';
+        } else {
+            discordTokenInput.placeholder = 'Mfa.xyz...';
+        }
+    }
+}
+
+function updateMediaSourceUI() {
+    const src = mediaSourceSelect ? mediaSourceSelect.value : 'os_media';
+    if (mediaSourceHelper) {
+        if (src === 'os_media') {
+            mediaSourceHelper.innerText = '✓ Membaca sesi musik langsung dari OS Windows tanpa Spicetify';
+            mediaSourceHelper.style.color = '#23a559';
+        } else {
+            mediaSourceHelper.innerText = '⚡ Membaca dari ekstensi Spicetify via WebSocket port 8974';
+            mediaSourceHelper.style.color = '#949ba4';
+        }
+    }
+}
+
 function collectSettings() {
     let rawAppId = rpcAppId ? rpcAppId.value.trim() : '';
     let effectiveAppId = extractDiscordId(rawAppId);
@@ -51,8 +89,11 @@ function collectSettings() {
     }
 
     return {
+        statusDisplayMode: statusDisplayMode ? statusDisplayMode.value : 'both',
         discordToken: discordTokenInput ? discordTokenInput.value.trim() : '',
         rpcAppId: effectiveAppId || rawAppId,
+        mediaSource: mediaSourceSelect ? mediaSourceSelect.value : 'os_media',
+        lyricsOffset: lyricsOffsetInput ? parseFloat(lyricsOffsetInput.value) : 0.4,
         customText1: customText1 ? customText1.value : '',
         customText2: customText2 ? customText2.value : '',
         customText3: customText3 ? customText3.value : '',
@@ -84,31 +125,45 @@ function setLyricStatus(enabled) {
 }
 
 function checkInputs() {
+    const mode = statusDisplayMode ? statusDisplayMode.value : 'both';
     const token = discordTokenInput ? discordTokenInput.value.trim() : '';
     const hasToken = token.length > 0;
     const t1 = customText1 ? customText1.value.trim() : '';
     const t2 = customText2 ? customText2.value.trim() : '';
     const t3 = customText3 ? customText3.value.trim() : '';
     const hasCustomText = (t1.length > 0 || t2.length > 0 || t3.length > 0);
-    const canConnect = hasToken && (hasCustomText || isLyricStatusOn);
+
+    let canConnect = false;
+    if (mode === 'rpc') {
+        // Pada mode RPC, Discord User Token tidak wajib
+        canConnect = (hasCustomText || isLyricStatusOn);
+    } else {
+        // Pada mode both atau custom_status, Discord User Token wajib
+        canConnect = hasToken && (hasCustomText || isLyricStatusOn);
+    }
 
     if (isConnected) {
         btnConnect.disabled = true;
         btnDisconnect.disabled = false;
-        btnUpdatePresence.disabled = false;
         btnRestart.disabled = false;
         if (discordTokenInput) discordTokenInput.disabled = true;
+        if (statusDisplayMode) statusDisplayMode.disabled = true;
     } else {
         btnConnect.disabled = !canConnect;
         btnDisconnect.disabled = true;
-        btnUpdatePresence.disabled = true;
         btnRestart.disabled = true;
         if (discordTokenInput) discordTokenInput.disabled = false;
+        if (statusDisplayMode) statusDisplayMode.disabled = false;
     }
 }
 
 // Load saved settings
 ipcRenderer.on('load-settings', (event, s) => {
+    if (s.statusDisplayMode && statusDisplayMode) {
+        statusDisplayMode.value = s.statusDisplayMode;
+    }
+    updateModeUI();
+
     if (s.discordToken && discordTokenInput) discordTokenInput.value = s.discordToken;
 
     if (s.rpcAppId !== undefined && rpcAppId) rpcAppId.value = s.rpcAppId;
@@ -124,6 +179,19 @@ ipcRenderer.on('load-settings', (event, s) => {
     if (s.customText2 !== undefined && customText2) customText2.value = s.customText2;
     if (s.customText3 !== undefined && customText3) customText3.value = s.customText3;
     if (s.customTime !== undefined && customTime) customTime.value = s.customTime;
+
+    if (s.mediaSource !== undefined && mediaSourceSelect) {
+        mediaSourceSelect.value = s.mediaSource;
+    }
+    updateMediaSourceUI();
+
+    if (s.lyricsOffset !== undefined && lyricsOffsetInput) {
+        lyricsOffsetInput.value = s.lyricsOffset;
+        const val = parseFloat(s.lyricsOffset);
+        if (offsetValueText) {
+            offsetValueText.innerText = (val >= 0 ? '+' : '') + val.toFixed(1) + 's';
+        }
+    }
 
     setLyricStatus(!!s.lyricStatusEnabled);
     checkInputs();
@@ -190,9 +258,19 @@ if (rpcAppId) {
 
 // Input change listeners for auto-save
 const autoSaveInputs = [
-    discordTokenInput, rpcAppId,
+    statusDisplayMode, discordTokenInput, rpcAppId,
+    mediaSourceSelect, lyricsOffsetInput,
     customText1, customText2, customText3, customTime
 ].filter(Boolean);
+
+if (lyricsOffsetInput) {
+    lyricsOffsetInput.addEventListener('input', () => {
+        const val = parseFloat(lyricsOffsetInput.value);
+        if (offsetValueText) {
+            offsetValueText.innerText = (val >= 0 ? '+' : '') + val.toFixed(1) + 's';
+        }
+    });
+}
 
 autoSaveInputs.forEach((input) => {
     input.addEventListener('input', () => {
@@ -200,6 +278,12 @@ autoSaveInputs.forEach((input) => {
         checkInputs();
     });
     input.addEventListener('change', () => {
+        if (input === statusDisplayMode) {
+            updateModeUI();
+        }
+        if (input === mediaSourceSelect) {
+            updateMediaSourceUI();
+        }
         saveAllSettings();
         checkInputs();
     });
@@ -225,13 +309,6 @@ if (btnConnect) {
 if (btnDisconnect) {
     btnDisconnect.addEventListener('click', () => {
         ipcRenderer.send('stop-sync');
-    });
-}
-
-if (btnUpdatePresence) {
-    btnUpdatePresence.addEventListener('click', () => {
-        saveAllSettings();
-        ipcRenderer.send('update-presence', collectSettings());
     });
 }
 

@@ -2,25 +2,28 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Presync 1.0.0</title>
+    <title>Presync</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="header-menu">
-        <span>File</span>
-        <span>Settings</span>
-        <span>Help</span>
-    </div>
     <form id="settingsForm" class="app-layout">
         <div class="container">
-            <!-- Discord Section -->
             <div class="section-title">Discord Settings</div>
             <div class="form-group">
+                <label for="statusDisplayMode">Status Mode</label>
+                <select id="statusDisplayMode">
+                    <option value="both">Both (Custom Status + Discord RPC)</option>
+                    <option value="custom_status">Custom Status Only (Profile Text)</option>
+                    <option value="rpc">Discord RPC Only (Rich Presence - Safe)</option>
+                </select>
+                <span class="helper-text" id="modeHelper">Menampilkan lirik di status profil dan Rich Presence</span>
+            </div>
+            <div class="form-group" id="tokenGroup">
                 <label for="discordToken">Discord Token</label>
                 <input type="password" id="discordToken" placeholder="Mfa.xyz..." />
             </div>
-            <div class="form-group">
-                <label for="rpcAppId">ID</label>
+            <div class="form-group" id="appIdGroup">
+                <label for="rpcAppId">RPC Application ID</label>
                 <input type="text" id="rpcAppId" placeholder="1444178398372036789" />
             </div>
 
@@ -38,7 +41,6 @@
                 <label for="customText3">Text 3</label>
                 <input type="text" id="customText3" placeholder="Listening Music" />
             </div>
-            <!-- Time Changed -->
             <div class="form-group">
                 <label for="customTime">Time Changed</label>
                 <div class="party-row">
@@ -46,8 +48,6 @@
                     <input type="number" id="customTime" min="0" value="0" />
                 </div>
             </div>
-
-            <!-- Lyric Status Header with Saklar Switch -->
             <div class="section-header-row">
                 <div class="section-title">Lyric Status</div>
                 <button type="button" id="lyricToggleBtn" class="saklar-container off" title="Toggle Lyric Status">
@@ -60,7 +60,20 @@
 
             <div id="lyricSyncContainer" class="hidden">
                 <div class="form-group">
-                    <span class="helper-text" style="color: #23a559;">✓ Menggunakan Spicetify (Non-Premium)</span>
+                    <label for="mediaSourceSelect">Media Source</label>
+                    <select id="mediaSourceSelect">
+                        <option value="os_media">OS Media (Spotify / Browser / Apple Music)</option>
+                        <option value="spicetify">Spicetify WebSocket (Port 8974)</option>
+                    </select>
+                    <span class="helper-text" id="mediaSourceHelper" style="color: #23a559;">✓ Membaca sesi musik langsung dari OS Windows tanpa Spicetify</span>
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label for="lyricsOffset" style="margin-bottom: 0;">Lyrics Offset (Timing)</label>
+                        <span id="offsetValueText" style="font-size: 12px; color: #5865f2; font-weight: bold;">+0.4s</span>
+                    </div>
+                    <input type="range" id="lyricsOffset" min="-2.0" max="2.0" step="0.1" value="0.4" style="accent-color: #5865f2; cursor: pointer; width: 100%;" />
+                    <span class="helper-text">Kompensasi latency: geser kiri jika lirik telat, kanan jika terlalu cepat.</span>
                 </div>
                 <div class="divider"></div>
                 <div class="logs" id="logsContainer">
@@ -68,19 +81,14 @@
                 </div>
             </div>
         </div>
-
-        <!-- Sticky Footer -->
         <div class="footer-sticky">
             <div class="action-buttons">
                 <div>
                     <button type="submit" id="btnConnect" class="btn-primary" disabled>Connect</button>
                     <button type="button" id="btnDisconnect" class="btn-secondary" disabled>Disconnect</button>
-                    <button type="button" id="btnUpdatePresence" class="btn-secondary" disabled>Update Presence</button>
                 </div>
                 <button type="button" id="btnRestart" class="btn-secondary" disabled>Restart</button>
             </div>
-
-            <!-- Status Indicator -->
             <div class="status-bar">
                 <span class="status-indicator disconnected" id="statusDot"></span>
                 <span id="statusText">Disconnected</span>
