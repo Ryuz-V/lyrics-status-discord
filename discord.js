@@ -1,12 +1,9 @@
 const axios = require('axios');
 
-const EMOJIS = ['💫', '✨', '🩵', '🐦‍⬛', '🎶', '🎤'];
-
 // Rate limit & state tracking
 let lastRequestTime = 0;
 let rateLimitedUntil = 0;
 let lastSentText = null;
-let lastSentEmoji = null;
 
 // Batas minimum waktu antar-request ke Discord (2.5 detik) untuk mencegah flag rate-limit
 const MIN_COOLDOWN_MS = 2500;
@@ -20,13 +17,11 @@ async function updateCustomStatus(text, token, customEmoji = null) {
         return { success: false, message: 'Missing token or text' };
     }
 
-    const emoji = customEmoji !== null ? customEmoji : EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
-
     // Batasi teks maksimal 128 karakter sesuai limit Discord
     const truncatedText = text.length > 128 ? text.substring(0, 125) + '...' : text;
 
-    // Deduplikasi: jika teks dan emoji sama persis dengan yang terakhir berhasil dikirim, lewati
-    if (truncatedText === lastSentText && emoji === lastSentEmoji) {
+    // Deduplikasi: jika teks sama persis dengan yang terakhir berhasil dikirim, lewati
+    if (truncatedText === lastSentText) {
         return { success: true, skipped: true };
     }
 
@@ -54,12 +49,11 @@ async function updateCustomStatus(text, token, customEmoji = null) {
 
     const payload = {
         custom_status: {
-            text: truncatedText
+            text: truncatedText,
+            emoji_name: customEmoji || null,
+            emoji_id: null
         }
     };
-    if (emoji) {
-        payload.custom_status.emoji_name = emoji;
-    }
 
     try {
         lastRequestTime = Date.now();
@@ -76,8 +70,7 @@ async function updateCustomStatus(text, token, customEmoji = null) {
         );
 
         lastSentText = truncatedText;
-        lastSentEmoji = emoji;
-        return { success: true, text: truncatedText, emoji };
+        return { success: true, text: truncatedText };
     } catch (error) {
         if (error.response) {
             const status = error.response.status;
@@ -142,7 +135,6 @@ async function clearCustomStatus(token) {
             }
         );
         lastSentText = null;
-        lastSentEmoji = null;
         return { success: true };
     } catch (error) {
         if (error.response && error.response.status === 429) {
@@ -159,7 +151,6 @@ async function clearCustomStatus(token) {
  */
 function resetStatusState() {
     lastSentText = null;
-    lastSentEmoji = null;
 }
 
 /**

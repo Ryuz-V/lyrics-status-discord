@@ -6,7 +6,6 @@ const { fetchLyrics, getCurrentLyric, clearLyricsCache } = require('./lyrics');
 const { updateCustomStatus, clearCustomStatus, resetStatusState } = require('./discord');
 const { startWebSocketServer, getCurrentlyPlaying } = require('./spotify');
 const { startSMTCListener, stopSMTCListener, getSMTCState } = require('./smtc');
-const { getDiscordRPC } = require('./activitystatus');
 
 // Helper function untuk enkripsi token Discord menggunakan OS Keychain bawaan Electron
 function saveSecureToken(token) {
@@ -69,69 +68,7 @@ function getActiveTrackInfo() {
 }
 
 
-// Helper function untuk update Discord RPC (Rich Presence) saat lagu diputar
-function updateDiscordRPCMusic(trackInfo, lyricOrTitle, progressMs = 0) {
-    const rpc = getDiscordRPC();
-    if (!rpc || !rpc.connected) return;
 
-    const startTimestamp = Math.floor((Date.now() - progressMs) / 1000);
-    const endTimestamp = trackInfo.durationMs 
-        ? Math.floor((Date.now() - progressMs + trackInfo.durationMs) / 1000) 
-        : null;
-
-    rpc.setActivity({
-        type: 'listening',
-        name: 'Spotify',
-        details: (lyricOrTitle || trackInfo.name).substring(0, 128),
-        state: `${trackInfo.artist}${trackInfo.album ? ' - ' + trackInfo.album : ''}`.substring(0, 128),
-        timestampType: 'custom',
-        customStart: startTimestamp * 1000,
-        customEnd: endTimestamp ? (endTimestamp * 1000) : null,
-        largeImageKey: 'spotify',
-        largeImageText: (trackInfo.album || trackInfo.name).substring(0, 128),
-        smallImageKey: 'play',
-        smallImageText: 'Playing'
-    });
-}
-
-// Helper function untuk update Discord RPC saat teks custom berotasi
-function updateDiscordRPCCustom(text) {
-    const rpc = getDiscordRPC();
-    if (!rpc || !rpc.connected) return;
-
-    rpc.setActivity({
-        type: 'playing',
-        name: text.substring(0, 128),
-        details: text.substring(0, 128),
-        state: 'Presync',
-        timestampType: 'since_connection',
-        largeImageKey: 'spotify',
-        largeImageText: 'Presync'
-    });
-}
-
-function clearDiscordRPC() {
-    const rpc = getDiscordRPC();
-    if (rpc && rpc.connected) {
-        rpc.clearActivity();
-    }
-}
-
-
-function extractDiscordId(tokenOrId) {
-    if (!tokenOrId) return '';
-    tokenOrId = tokenOrId.toString().trim();
-    if (tokenOrId.includes('.')) {
-        try {
-            const first = tokenOrId.split('.')[0];
-            const decoded = Buffer.from(first, 'base64').toString('utf8');
-            if (/^\d+$/.test(decoded)) {
-                return decoded;
-            }
-        } catch (e) {}
-    }
-    return tokenOrId;
-}
 
 // Simple JSON config manager
 let storePath = '';
@@ -214,10 +151,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-    const rpc = getDiscordRPC();
-    if (rpc && rpc.connected) {
-        rpc.disconnect();
-    }
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -226,11 +159,8 @@ app.on('window-all-closed', () => {
 // IPC Handlers
 ipcMain.on('request-settings', (event) => {
     const token = getSecureToken();
-    const defaultAppId = extractDiscordId(token) || '1444178398372036789';
     const settings = {
-        statusDisplayMode: store.get('statusDisplayMode', 'both'),
         discordToken: token,
-        rpcAppId: store.get('rpcAppId', defaultAppId),
         mediaSource: store.get('mediaSource', 'os_media'),
         lyricsOffset: store.get('lyricsOffset', 0.4),
         customText1: store.get('customText1', ''),
@@ -265,13 +195,9 @@ ipcMain.on('start-sync', async (event, settings) => {
         }
     }
 
-    const mode = (settings && settings.statusDisplayMode) || store.get('statusDisplayMode', 'both');
-    const enableCustomStatus = mode === 'both' || mode === 'custom_status';
-    const enableRPC = mode === 'both' || mode === 'rpc';
-
     activeDiscordToken = (settings && settings.discordToken) || getSecureToken();
-    if (enableCustomStatus && !activeDiscordToken) {
-        logToUI("Discord Token dibutuhkan untuk mode " + (mode === 'both' ? 'Both' : 'Custom Status') + "! Silakan masukkan token di Settings.", "error");
+    if (!activeDiscordToken) {
+        logToUI("Discord Token dibutuhkan! Silakan masukkan token di Settings.", "error");
         event.sender.send('state-update', { connected: false });
         return;
     }
@@ -292,24 +218,6 @@ ipcMain.on('start-sync', async (event, settings) => {
         logToUI("OS Media Listener (Windows SMTC) aktif.", "info");
     }
 
-    // Hubungkan Discord RPC jika mode mengaktifkan RPC
-    let rpcUser = null;
-    if (enableRPC) {
-        const rawAppId = (settings && settings.rpcAppId) || store.get('rpcAppId');
-        const appId = extractDiscordId(rawAppId) || extractDiscordId(activeDiscordToken) || '1444178398372036789';
-        try {
-            const rpc = getDiscordRPC();
-            if (!rpc.connected && appId) {
-                rpcUser = await rpc.findAndConnect(appId);
-                if (rpcUser) {
-                    logToUI(`Discord RPC Connected as ${rpcUser.username}`, "success");
-                }
-            }
-        } catch (e) {
-            logToUI(`Discord RPC: ${e.message}`, "info");
-        }
-    }
-
     // Reset loop variables
     if (syncInterval) clearInterval(syncInterval);
     currentTrackId = null;
@@ -320,7 +228,7 @@ ipcMain.on('start-sync', async (event, settings) => {
     lastRotationTime = 0;
     lastCustomTextApplied = null;
 
-    logToUI(`Connected! Status monitoring started [Mode: ${mode.toUpperCase()} | Source: ${mediaSource.toUpperCase()}].`, "success");
+    logToUI(`Connected! Status monitoring started [Source: ${mediaSource.toUpperCase()}].`, "success");
     syncInterval = setInterval(syncLoop, 1000);
 
     // Run first tick immediately
@@ -328,7 +236,7 @@ ipcMain.on('start-sync', async (event, settings) => {
 
     event.sender.send('state-update', {
         connected: true,
-        user: rpcUser ? rpcUser.username : null
+        user: null
     });
 });
 
@@ -351,7 +259,6 @@ ipcMain.on('toggle-lyric-status', async (event, { enabled }) => {
             currentLyrics = null;
             lastRotationTime = 0;
             lastCustomTextApplied = null;
-            clearDiscordRPC();
             if (syncInterval) {
                 syncLoop();
             }
@@ -382,24 +289,66 @@ ipcMain.on('stop-sync', async (event) => {
     lastRotationTime = 0;
     lastCustomTextApplied = null;
 
-    clearDiscordRPC();
-    const rpc = getDiscordRPC();
-    if (rpc && rpc.connected) {
-        rpc.disconnect();
-    }
-
     logToUI("Disconnected.", "error");
     event.sender.send('state-update', { connected: false });
 });
 
+// Helper function untuk rotasi teks Custom Status (Text 1, 2, 3)
+async function applyCustomStatusRotation() {
+    // Kumpulkan teks non-kosong dari Text 1, 2, 3
+    const t1 = (store.get('customText1', '') || '').trim();
+    const t2 = (store.get('customText2', '') || '').trim();
+    const t3 = (store.get('customText3', '') || '').trim();
+    const customTexts = [t1, t2, t3].filter(t => t.length > 0);
+
+    if (customTexts.length === 0) {
+        // Semua teks custom kosong
+        if (lastCustomTextApplied !== null) {
+            await clearCustomStatus(activeDiscordToken);
+            lastCustomTextApplied = null;
+            logToUI("No custom text provided, status cleared.", "info");
+        }
+        return;
+    }
+
+    // Hitung interval rotasi berdasarkan Time Changed (1 = 10 detik)
+    const rawTime = parseInt(store.get('customTime', '0'), 10);
+    const timeMultiplier = (!isNaN(rawTime) && rawTime > 0) ? rawTime : 1;
+    const rotationIntervalMs = timeMultiplier * 10 * 1000;
+
+    const now = Date.now();
+    let shouldUpdate = false;
+
+    if (lastRotationTime === 0 || lastCustomTextApplied === null) {
+        // Pertama kali aktif atau baru beralih dari musik
+        currentCustomIndex = 0;
+        lastRotationTime = now;
+        shouldUpdate = true;
+    } else if (customTexts.length > 1 && (now - lastRotationTime) >= rotationIntervalMs) {
+        // Waktunya rotasi ke teks berikutnya
+        currentCustomIndex = (currentCustomIndex + 1) % customTexts.length;
+        lastRotationTime = now;
+        shouldUpdate = true;
+    }
+
+    const targetText = customTexts[currentCustomIndex % customTexts.length];
+
+    // Kirim ke Discord jika rotasi terjadi atau teks berbeda dari yang sedang aktif
+    if (shouldUpdate || targetText !== lastCustomTextApplied) {
+        lastCustomTextApplied = targetText;
+
+        const res = await updateCustomStatus(targetText, activeDiscordToken);
+        if (res && res.rateLimited) {
+            logToUI(`[Rate Limit] Menunggu ${res.retryAfter}s untuk Custom Status`, "error");
+        }
+
+        logToUI(`[Custom Status (${(currentCustomIndex % customTexts.length) + 1}/${customTexts.length})]: ${targetText}`, "success");
+    }
+}
+
 async function syncLoop() {
     try {
-        const mode = store.get('statusDisplayMode', 'both');
-        const enableCustomStatus = mode === 'both' || mode === 'custom_status';
-        const enableRPC = mode === 'both' || mode === 'rpc';
-
-        // Validasi kebutuhan token untuk mode custom status
-        if (enableCustomStatus && !activeDiscordToken && !enableRPC) {
+        if (!activeDiscordToken) {
             return;
         }
 
@@ -412,74 +361,42 @@ async function syncLoop() {
             // Penanganan Iklan Spotify Free (Ad Detection)
             // ========================================================
             if (isSpotifyAd(trackInfo)) {
-                const adText = "🎵 Spotify Advertisement";
+                const adText = "Spotify Advertisement";
                 if (lastLyricLine !== adText) {
                     lastLyricLine = adText;
                     logToUI("[Iklan] Iklan Spotify terdeteksi, sinkronisasi lirik dijeda.", "info");
-                    if (enableCustomStatus && activeDiscordToken) {
-                        await updateCustomStatus(adText, activeDiscordToken, "📢");
-                    }
-                    if (enableRPC) {
-                        const rpc = getDiscordRPC();
-                        if (rpc && rpc.connected) {
-                            rpc.setActivity({
-                                type: 'listening',
-                                name: 'Spotify',
-                                details: 'Spotify Advertisement',
-                                state: 'Ad Break',
-                                largeImageKey: 'spotify',
-                                largeImageText: 'Spotify'
-                            });
-                        }
-                    }
+                    await updateCustomStatus(adText, activeDiscordToken);
                 }
                 return;
             }
 
-            // ========================================================
-            // PRIORITAS 1: Musik Sedang Berputar
-            // ========================================================
-            if (activeStatusMode !== 'music') {
-                activeStatusMode = 'music';
-                lastCustomTextApplied = null;
-                logToUI(`[Priority] Music detected, prioritizing music status.`, "info");
-            }
-
             // Cek apakah lagu berubah
-            if (trackInfo.id !== currentTrackId) {
-                currentTrackId = trackInfo.id;
+            const trackId = trackInfo.id || `${trackInfo.artist || ''}___${trackInfo.name || ''}`;
+            if (trackId !== currentTrackId) {
+                currentTrackId = trackId;
                 lastLyricLine = null;
                 logToUI(`Now playing: ${trackInfo.name} by ${trackInfo.artist}`, "info");
 
                 currentLyrics = await fetchLyrics(trackInfo.name, trackInfo.artist, trackInfo.album, trackInfo.durationMs);
                 if (!currentLyrics) {
-                    logToUI(`No synced lyrics found for "${trackInfo.name}". Showing track name.`, "info");
-                    const trackDisplay = `🎵 ${trackInfo.name} - ${trackInfo.artist}`;
-                    if (trackDisplay !== lastLyricLine) {
-                        lastLyricLine = trackDisplay;
-                        
-                        if (enableCustomStatus && activeDiscordToken) {
-                            const res = await updateCustomStatus(trackDisplay, activeDiscordToken);
-                            if (res && res.rateLimited) {
-                                logToUI(`[Rate Limit] Menunggu ${res.retryAfter}s untuk Custom Status`, "error");
-                            } else if (res && res.unauthorized) {
-                                logToUI(res.message, "error");
-                            }
-                        }
-
-                        if (enableRPC) {
-                            updateDiscordRPCMusic(trackInfo, trackDisplay, trackInfo.progressMs || 0);
-                        }
-
-                        logToUI(`Status: ${trackDisplay}`);
-                    }
+                    logToUI(`[Info] Tidak ada lirik sinkronisasi untuk "${trackInfo.name}". Menampilkan Custom Status.`, "info");
+                    activeStatusMode = 'custom';
+                    lastCustomTextApplied = null;
+                    lastRotationTime = 0;
                 } else {
                     logToUI(`Found synced lyrics for "${trackInfo.name}"`, "success");
+                    activeStatusMode = 'music';
+                    lastCustomTextApplied = null;
                 }
             }
 
             // Update lirik jika lirik tersedia
             if (currentLyrics) {
+                if (activeStatusMode !== 'music') {
+                    activeStatusMode = 'music';
+                    lastCustomTextApplied = null;
+                }
+
                 const timeSinceUpdate = trackInfo.lastUpdate ? (Date.now() - trackInfo.lastUpdate) : 0;
                 const interpolatedProgressMs = trackInfo.progressMs + timeSinceUpdate;
                 
@@ -491,107 +408,48 @@ async function syncLoop() {
                 if (currentLine && currentLine !== lastLyricLine) {
                     lastLyricLine = currentLine;
 
-                    if (enableCustomStatus && activeDiscordToken) {
-                        const res = await updateCustomStatus(currentLine, activeDiscordToken);
-                        if (res && res.rateLimited) {
-                            logToUI(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`, "error");
-                        } else if (res && res.unauthorized) {
-                            logToUI(res.message, "error");
-                        } else if (res && res.success && !res.skipped) {
-                            logToUI(`Custom Status: ${currentLine}`);
-                        }
-                    }
-
-                    if (enableRPC) {
-                        updateDiscordRPCMusic(trackInfo, currentLine, interpolatedProgressMs);
-                        if (!enableCustomStatus) {
-                            logToUI(`Discord RPC: ${currentLine}`);
-                        }
+                    const res = await updateCustomStatus(currentLine, activeDiscordToken);
+                    if (res && res.rateLimited) {
+                        logToUI(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`, "error");
+                    } else if (res && res.unauthorized) {
+                        logToUI(res.message, "error");
+                    } else if (res && res.success && !res.skipped) {
+                        logToUI(`Custom Status: ${currentLine}`);
                     }
                 }
+            } else {
+                // Musik berputar tetapi lirik tidak ada / tidak bisa disinkronkan -> gunakan Custom Status
+                if (activeStatusMode !== 'custom') {
+                    activeStatusMode = 'custom';
+                    lastRotationTime = 0;
+                    currentCustomIndex = 0;
+                    lastCustomTextApplied = null;
+                }
+                await applyCustomStatusRotation();
             }
         } else {
             // ========================================================
             // PRIORITAS 2: Musik Berhenti / Dijeda (Custom Status Text)
             // ========================================================
-            if (activeStatusMode === 'music') {
-                logToUI("Music paused/stopped. Switching to Custom Status texts...", "info");
+            if (currentTrackId !== null) {
                 currentTrackId = null;
                 currentLyrics = null;
                 lastLyricLine = null;
+                if (activeStatusMode === 'music') {
+                    logToUI("Music paused/stopped. Switching to Custom Status texts...", "info");
+                }
                 activeStatusMode = 'custom';
                 lastRotationTime = 0; // Langsung tampilkan teks tanpa tunggu rotasi
                 currentCustomIndex = 0;
                 lastCustomTextApplied = null;
-                clearDiscordRPC();
             } else if (activeStatusMode === null) {
                 activeStatusMode = 'custom';
                 lastRotationTime = 0;
                 currentCustomIndex = 0;
                 lastCustomTextApplied = null;
-                clearDiscordRPC();
             }
 
-            // Kumpulkan teks non-kosong dari Text 1, 2, 3
-            const t1 = (store.get('customText1', '') || '').trim();
-            const t2 = (store.get('customText2', '') || '').trim();
-            const t3 = (store.get('customText3', '') || '').trim();
-            const customTexts = [t1, t2, t3].filter(t => t.length > 0);
-
-            if (customTexts.length === 0) {
-                // Semua teks custom kosong
-                if (lastCustomTextApplied !== null) {
-                    if (enableCustomStatus && activeDiscordToken) {
-                        await clearCustomStatus(activeDiscordToken);
-                    }
-                    if (enableRPC) {
-                        clearDiscordRPC();
-                    }
-                    lastCustomTextApplied = null;
-                    logToUI("No custom text provided, status cleared.", "info");
-                }
-                return;
-            }
-
-            // Hitung interval rotasi berdasarkan Time Changed (1 = 10 detik)
-            const rawTime = parseInt(store.get('customTime', '0'), 10);
-            const timeMultiplier = (!isNaN(rawTime) && rawTime > 0) ? rawTime : 1;
-            const rotationIntervalMs = timeMultiplier * 10 * 1000;
-
-            const now = Date.now();
-            let shouldUpdate = false;
-
-            if (lastRotationTime === 0 || lastCustomTextApplied === null) {
-                // Pertama kali aktif atau baru beralih dari musik
-                currentCustomIndex = 0;
-                lastRotationTime = now;
-                shouldUpdate = true;
-            } else if (customTexts.length > 1 && (now - lastRotationTime) >= rotationIntervalMs) {
-                // Waktunya rotasi ke teks berikutnya
-                currentCustomIndex = (currentCustomIndex + 1) % customTexts.length;
-                lastRotationTime = now;
-                shouldUpdate = true;
-            }
-
-            const targetText = customTexts[currentCustomIndex % customTexts.length];
-
-            // Kirim ke Discord jika rotasi terjadi atau teks berbeda dari yang sedang aktif
-            if (shouldUpdate || targetText !== lastCustomTextApplied) {
-                lastCustomTextApplied = targetText;
-
-                if (enableCustomStatus && activeDiscordToken) {
-                    const res = await updateCustomStatus(targetText, activeDiscordToken);
-                    if (res && res.rateLimited) {
-                        logToUI(`[Rate Limit] Menunggu ${res.retryAfter}s untuk Custom Status`, "error");
-                    }
-                }
-
-                if (enableRPC) {
-                    updateDiscordRPCCustom(targetText);
-                }
-
-                logToUI(`[Custom Status (${(currentCustomIndex % customTexts.length) + 1}/${customTexts.length})]: ${targetText}`, "success");
-            }
+            await applyCustomStatusRotation();
         }
     } catch (error) {
         logToUI("Loop Error: " + error.message, "error");
