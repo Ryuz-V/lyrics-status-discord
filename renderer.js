@@ -2,6 +2,8 @@ const { ipcRenderer } = require('electron');
 
 // DOM Elements - Discord Settings
 const discordTokenInput = document.getElementById('discordToken');
+const bgToggleBtn = document.getElementById('bgToggleBtn');
+const bgToggleText = document.getElementById('bgToggleText');
 
 // DOM Elements - Custom Status Fields
 const customText1 = document.getElementById('customText1');
@@ -28,10 +30,12 @@ const logsContainer = document.getElementById('logsContainer');
 
 let isConnected = false;
 let isLyricStatusOn = false;
+let isRunInBackgroundOn = false;
 
 function collectSettings() {
     return {
         discordToken: discordTokenInput ? discordTokenInput.value.trim() : '',
+        runInBackground: isRunInBackgroundOn,
         mediaSource: mediaSourceSelect ? mediaSourceSelect.value : 'os_media',
         lyricsOffset: lyricsOffsetInput ? parseFloat(lyricsOffsetInput.value) : 0.4,
         customText1: customText1 ? customText1.value : '',
@@ -45,6 +49,19 @@ function collectSettings() {
 function saveAllSettings() {
     const settings = collectSettings();
     ipcRenderer.send('save-settings', settings);
+}
+
+function setBackgroundStatus(enabled) {
+    isRunInBackgroundOn = !!enabled;
+    if (bgToggleBtn && bgToggleText) {
+        if (isRunInBackgroundOn) {
+            bgToggleBtn.className = 'saklar-container on';
+            bgToggleText.innerText = 'ON';
+        } else {
+            bgToggleBtn.className = 'saklar-container off';
+            bgToggleText.innerText = 'OFF';
+        }
+    }
 }
 
 function setLyricStatus(enabled) {
@@ -109,6 +126,7 @@ ipcRenderer.on('load-settings', (event, s) => {
     }
 
     setLyricStatus(!!s.lyricStatusEnabled);
+    setBackgroundStatus(!!s.runInBackground);
     checkInputs();
 });
 
@@ -143,6 +161,19 @@ if (lyricToggleBtn) {
         const nextState = !isLyricStatusOn;
         setLyricStatus(nextState);
         ipcRenderer.send('toggle-lyric-status', {
+            enabled: nextState
+        });
+    });
+}
+
+// Run in Background toggle listener
+if (bgToggleBtn) {
+    bgToggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const nextState = !isRunInBackgroundOn;
+        setBackgroundStatus(nextState);
+        saveAllSettings();
+        ipcRenderer.send('toggle-background-mode', {
             enabled: nextState
         });
     });

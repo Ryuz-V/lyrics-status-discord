@@ -1,12 +1,42 @@
 {
-  "name": "lyric",
+  "name": "presync",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord Custom Status Spotify Lyrics Synchronizer",
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
-    "dev": "electron ."
+    "dev": "electron .",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable",
+    "dist:installer": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.presync.app",
+    "productName": "Presync",
+    "asar": true,
+    "asarUnpack": [
+      "bin/**/*"
+    ],
+    "files": [
+      "**/*",
+      "!**/*.map",
+      "!.env",
+      "!guide.txt",
+      "!text.txt"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "keywords": [],
   "author": "",
@@ -15,8 +45,11 @@
   "dependencies": {
     "axios": "^1.19.0",
     "dotenv": "^17.4.2",
-    "electron": "^44.7.0",
     "electron-store": "^11.0.2",
     "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
   }
 }

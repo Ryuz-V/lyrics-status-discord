@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { fetchLyrics, getCurrentLyric, clearLyricsCache } = require('./lyrics');
@@ -112,6 +112,91 @@ let currentCustomIndex = 0;
 let lastRotationTime = 0;
 let lastCustomTextApplied = null;
 
+let tray = null;
+let isQuitting = false;
+
+function getTrayIcon() {
+    const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+        <circle cx="8" cy="8" r="7" fill="#5865F2" />
+        <path d="M6 4.5v5.2a1.8 1.8 0 1 0 1.2 1.7V6.5l3.5-.8v2.5a1.8 1.8 0 1 0 1.2 1.7V4l-5.9 1.2z" fill="#FFFFFF" />
+    </svg>`;
+    return nativeImage.createFromBuffer(Buffer.from(iconSvg));
+}
+
+function updateTrayMenu() {
+    if (!tray) return;
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: 'Open Presync',
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
+            }
+        },
+        { type: 'separator' },
+        {
+            label: 'Quit',
+            click: () => {
+                isQuitting = true;
+                app.quit();
+            }
+        }
+    ]);
+    tray.setContextMenu(contextMenu);
+}
+
+function setupTray() {
+    if (tray) return;
+    try {
+        const icon = getTrayIcon();
+        tray = new Tray(icon);
+        tray.setToolTip('Presync - Discord Lyrics Sync');
+        updateTrayMenu();
+
+        tray.on('click', () => {
+            if (mainWindow) {
+                if (mainWindow.isVisible()) {
+                    if (!mainWindow.isFocused()) {
+                        mainWindow.focus();
+                    } else {
+                        mainWindow.hide();
+                    }
+                } else {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
+            }
+        });
+
+        tray.on('double-click', () => {
+            if (mainWindow) {
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+    } catch (e) {
+        console.error("Tray error:", e);
+    }
+}
+
+function destroyTray() {
+    if (tray) {
+        tray.destroy();
+        tray = null;
+    }
+}
+
+function updateAutoLaunch(enabled) {
+    try {
+        app.setLoginItemSettings({
+            openAtLogin: !!enabled,
+            openAsHidden: false
+        });
+    } catch (e) {}
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 520,
@@ -121,7 +206,7 @@ function createWindow() {
         title: "Presync 1.0.0",
         backgroundColor: '#2b2d31',
         resizable: false,
-        minimizable: false,
+        minimizable: true,
         maximizable: false,
         webPreferences: {
             nodeIntegration: true,
@@ -132,6 +217,14 @@ function createWindow() {
     mainWindow.setMenuBarVisibility(false);
     mainWindow.removeMenu();
     mainWindow.loadFile('index.html');
+
+    mainWindow.on('close', (event) => {
+        const runBg = store.get('runInBackground', false);
+        if (!isQuitting && runBg) {
+            event.preventDefault();
+            mainWindow.hide();
+        }
+    });
 }
 
 function logToUI(message, type = 'default') {
@@ -143,15 +236,29 @@ function logToUI(message, type = 'default') {
 app.whenReady().then(() => {
     createWindow();
 
+    const runBg = store.get('runInBackground', false);
+    if (runBg) {
+        setupTray();
+        updateAutoLaunch(true);
+    }
+
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
+        } else if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
         }
     });
 });
 
+app.on('before-quit', () => {
+    isQuitting = true;
+});
+
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    const runBg = store.get('runInBackground', false);
+    if (!runBg && process.platform !== 'darwin') {
         app.quit();
     }
 });
@@ -161,6 +268,7 @@ ipcMain.on('request-settings', (event) => {
     const token = getSecureToken();
     const settings = {
         discordToken: token,
+        runInBackground: store.get('runInBackground', false),
         mediaSource: store.get('mediaSource', 'os_media'),
         lyricsOffset: store.get('lyricsOffset', 0.4),
         customText1: store.get('customText1', ''),
@@ -263,6 +371,18 @@ ipcMain.on('toggle-lyric-status', async (event, { enabled }) => {
                 syncLoop();
             }
         }
+    }
+});
+
+ipcMain.on('toggle-background-mode', (event, { enabled }) => {
+    store.set('runInBackground', !!enabled);
+    updateAutoLaunch(!!enabled);
+    if (enabled) {
+        setupTray();
+        logToUI("Run in background aktif. Aplikasi akan bersembunyi di System Tray saat ditutup.", "info");
+    } else {
+        destroyTray();
+        logToUI("Run in background nonaktif. Aplikasi akan keluar saat jendela ditutup.", "info");
     }
 });
 

@@ -13,7 +13,10 @@ function startSMTCListener(onUpdate) {
     updateCallback = onUpdate || null;
     shouldKeepRunning = true;
 
-    const exePath = path.join(__dirname, 'bin', 'smtc-reader.exe');
+    let exePath = path.join(__dirname, 'bin', 'smtc-reader.exe');
+    if (exePath.includes('app.asar')) {
+        exePath = exePath.replace('app.asar', 'app.asar.unpacked');
+    }
 
     try {
         smtcProcess = spawn(exePath, [], {
