@@ -7,7 +7,6 @@ const { updateCustomStatus, clearCustomStatus, resetStatusState } = require('./d
 const { startWebSocketServer, getCurrentlyPlaying } = require('./spotify');
 const { startSMTCListener, stopSMTCListener, getSMTCState } = require('./smtc');
 
-// Helper function untuk enkripsi token Discord menggunakan OS Keychain bawaan Electron
 function saveSecureToken(token) {
     if (!token) {
         store.set('encryptedDiscordToken', '');
@@ -18,9 +17,9 @@ function saveSecureToken(token) {
         try {
             const encrypted = safeStorage.encryptString(token).toString('base64');
             store.set('encryptedDiscordToken', encrypted);
-            store.set('discordToken', ''); // Hapus plaintext untuk keamanan
+            store.set('discordToken', '');
             return;
-        } catch (e) {}
+        } catch (e) { }
     }
     store.set('discordToken', token);
 }
@@ -80,7 +79,7 @@ const store = {
                 const data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
                 return data[key] !== undefined ? data[key] : def;
             }
-        } catch(e) {}
+        } catch (e) { }
         return def;
     },
     set: (key, value) => {
@@ -92,7 +91,7 @@ const store = {
             }
             data[key] = value;
             fs.writeFileSync(storePath, JSON.stringify(data, null, 2));
-        } catch(e) {}
+        } catch (e) { }
     }
 };
 
@@ -194,20 +193,20 @@ function updateAutoLaunch(enabled) {
             openAtLogin: !!enabled,
             openAsHidden: false
         });
-    } catch (e) {}
+    } catch (e) { }
 }
 
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 520,
-        height: 700,
+        height: 750,
         minWidth: 460,
-        minHeight: 450,
+        minHeight: 500,
         title: "Presync 1.0.0",
         backgroundColor: '#2b2d31',
-        resizable: false,
+        resizable: true,
         minimizable: true,
-        maximizable: false,
+        maximizable: true,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
@@ -275,18 +274,39 @@ ipcMain.on('request-settings', (event) => {
         customText2: store.get('customText2', ''),
         customText3: store.get('customText3', ''),
         customTime: store.get('customTime', '0'),
-        lyricStatusEnabled: store.get('lyricStatusEnabled', false)
+        lyricStatusEnabled: store.get('lyricStatusEnabled', true)
     };
     event.sender.send('load-settings', settings);
 });
 
 ipcMain.on('save-settings', (event, settings) => {
     if (!settings || typeof settings !== 'object') return;
+    const oldSource = store.get('mediaSource', 'os_media');
     for (const [key, val] of Object.entries(settings)) {
         if (key === 'discordToken') {
             saveSecureToken(val);
         } else if (val !== undefined) {
             store.set(key, val);
+        }
+    }
+
+    if (syncInterval && settings.mediaSource && settings.mediaSource !== oldSource) {
+        if (settings.mediaSource === 'spicetify') {
+            stopSMTCListener();
+            if (!isWebSocketStarted) {
+                startWebSocketServer();
+                isWebSocketStarted = true;
+            }
+            logToUI("Beralih ke Spicetify WebSocket.", "info");
+        } else {
+            startSMTCListener((state) => {
+                if (state && syncInterval) {
+                    syncLoop();
+                }
+            }, (msg, type) => {
+                logToUI(msg, type);
+            });
+            logToUI("Beralih ke OS Media Listener (SMTC).", "info");
         }
     }
 });
@@ -322,6 +342,8 @@ ipcMain.on('start-sync', async (event, settings) => {
             if (state && syncInterval) {
                 syncLoop();
             }
+        }, (msg, type) => {
+            logToUI(msg, type);
         });
         logToUI("OS Media Listener (Windows SMTC) aktif.", "info");
     }
@@ -353,10 +375,22 @@ ipcMain.on('toggle-lyric-status', async (event, { enabled }) => {
 
     if (enabled) {
         logToUI("Lyric Status enabled: Spotify music will be prioritized when playing.", "info");
-        if (!isWebSocketStarted) {
-            startWebSocketServer();
-            isWebSocketStarted = true;
-            logToUI("Started Spicetify WebSocket Server on port 8974", "info");
+        const mediaSource = store.get('mediaSource', 'os_media');
+        if (mediaSource === 'spicetify') {
+            if (!isWebSocketStarted) {
+                startWebSocketServer();
+                isWebSocketStarted = true;
+                logToUI("Started Spicetify WebSocket Server on port 8974", "info");
+            }
+        } else {
+            startSMTCListener((state) => {
+                if (state && syncInterval) {
+                    syncLoop();
+                }
+            }, (msg, type) => {
+                logToUI(msg, type);
+            });
+            logToUI("OS Media Listener (Windows SMTC) aktif.", "info");
         }
     } else {
         logToUI("Lyric Status disabled: Using Custom Status texts.", "info");
@@ -472,7 +506,7 @@ async function syncLoop() {
             return;
         }
 
-        const isLyricEnabled = store.get('lyricStatusEnabled', false);
+        const isLyricEnabled = store.get('lyricStatusEnabled', true);
         const trackInfo = getActiveTrackInfo();
         const isMusicPlaying = isLyricEnabled && trackInfo && trackInfo.isPlaying;
 
@@ -484,6 +518,7 @@ async function syncLoop() {
                 const adText = "Spotify Advertisement";
                 if (lastLyricLine !== adText) {
                     lastLyricLine = adText;
+                    console.log("[Iklan] Iklan Spotify terdeteksi, sinkronisasi lirik dijeda.");
                     logToUI("[Iklan] Iklan Spotify terdeteksi, sinkronisasi lirik dijeda.", "info");
                     await updateCustomStatus(adText, activeDiscordToken);
                 }
@@ -495,15 +530,25 @@ async function syncLoop() {
             if (trackId !== currentTrackId) {
                 currentTrackId = trackId;
                 lastLyricLine = null;
+                console.log(`[Music] Now playing: ${trackInfo.name} by ${trackInfo.artist}`);
                 logToUI(`Now playing: ${trackInfo.name} by ${trackInfo.artist}`, "info");
 
-                currentLyrics = await fetchLyrics(trackInfo.name, trackInfo.artist, trackInfo.album, trackInfo.durationMs);
+                try {
+                    currentLyrics = await fetchLyrics(trackInfo.name, trackInfo.artist, trackInfo.album, trackInfo.durationMs);
+                } catch (err) {
+                    currentLyrics = null;
+                    console.error(`[Lyrics Error] Gagal mengambil lirik: ${err.message}`);
+                    logToUI(`[Lyrics Error] Gagal mengambil lirik: ${err.message}`, "error");
+                }
+
                 if (!currentLyrics) {
-                    logToUI(`[Info] Tidak ada lirik sinkronisasi untuk "${trackInfo.name}". Menampilkan Custom Status.`, "info");
-                    activeStatusMode = 'custom';
+                    console.log(`[Lyrics] Lirik tidak ditemukan untuk "${trackInfo.name}" (${trackInfo.artist}). Status Discord dikosongkan.`);
+                    logToUI(`[Lyrics] Lirik tidak ditemukan untuk "${trackInfo.name}". Status Discord dikosongkan.`, "info");
+                    activeStatusMode = 'music';
                     lastCustomTextApplied = null;
-                    lastRotationTime = 0;
+                    await clearCustomStatus(activeDiscordToken);
                 } else {
+                    console.log(`[Lyrics] Ditemukan lirik sinkronisasi untuk "${trackInfo.name}"`);
                     logToUI(`Found synced lyrics for "${trackInfo.name}"`, "success");
                     activeStatusMode = 'music';
                     lastCustomTextApplied = null;
@@ -519,33 +564,36 @@ async function syncLoop() {
 
                 const timeSinceUpdate = trackInfo.lastUpdate ? (Date.now() - trackInfo.lastUpdate) : 0;
                 const interpolatedProgressMs = trackInfo.progressMs + timeSinceUpdate;
-                
+
                 // Terapkan lyrics offset (timing compensation) yang dapat disetel di UI
                 const offsetSec = parseFloat(store.get('lyricsOffset', 0.4)) || 0.4;
                 const offsetMs = Math.round(offsetSec * 1000);
                 const currentLine = getCurrentLyric(currentLyrics, interpolatedProgressMs + offsetMs);
 
                 if (currentLine && currentLine !== lastLyricLine) {
-                    lastLyricLine = currentLine;
-
                     const res = await updateCustomStatus(currentLine, activeDiscordToken);
                     if (res && res.rateLimited) {
+                        console.warn(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`);
                         logToUI(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`, "error");
                     } else if (res && res.unauthorized) {
+                        console.error(`[Discord Error] ${res.message}`);
                         logToUI(res.message, "error");
-                    } else if (res && res.success && !res.skipped) {
-                        logToUI(`Custom Status: ${currentLine}`);
+                    } else if (res && res.success) {
+                        lastLyricLine = currentLine;
+                        if (!res.skipped) {
+                            logToUI(`Custom Status: ${currentLine}`);
+                        }
                     }
                 }
             } else {
-                // Musik berputar tetapi lirik tidak ada / tidak bisa disinkronkan -> gunakan Custom Status
-                if (activeStatusMode !== 'custom') {
-                    activeStatusMode = 'custom';
-                    lastRotationTime = 0;
-                    currentCustomIndex = 0;
-                    lastCustomTextApplied = null;
+                // Musik berputar tetapi lirik tidak ada / tidak bisa disinkronkan:
+                // Sesuai instruksi user: status dikosongkan (tidak menampilkan judul/artis dan tidak melempar ke Custom Text)
+                activeStatusMode = 'music';
+                lastCustomTextApplied = null;
+                if (lastLyricLine !== null) {
+                    lastLyricLine = null;
+                    await clearCustomStatus(activeDiscordToken);
                 }
-                await applyCustomStatusRotation();
             }
         } else {
             // ========================================================
@@ -556,6 +604,7 @@ async function syncLoop() {
                 currentLyrics = null;
                 lastLyricLine = null;
                 if (activeStatusMode === 'music') {
+                    console.log("[Music] Musik berhenti/dijeda. Beralih ke rotasi Custom Status Text.");
                     logToUI("Music paused/stopped. Switching to Custom Status texts...", "info");
                 }
                 activeStatusMode = 'custom';
@@ -572,6 +621,7 @@ async function syncLoop() {
             await applyCustomStatusRotation();
         }
     } catch (error) {
+        console.error("[Loop Error]:", error);
         logToUI("Loop Error: " + error.message, "error");
     }
 }

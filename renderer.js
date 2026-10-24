@@ -29,7 +29,7 @@ const statusText = document.getElementById('statusText');
 const logsContainer = document.getElementById('logsContainer');
 
 let isConnected = false;
-let isLyricStatusOn = false;
+let isLyricStatusOn = true;
 let isRunInBackgroundOn = false;
 
 function collectSettings() {
@@ -64,7 +64,7 @@ function setBackgroundStatus(enabled) {
     }
 }
 
-function setLyricStatus(enabled) {
+function setLyricStatus(enabled, skipSave = false) {
     isLyricStatusOn = enabled;
     if (lyricToggleBtn && lyricToggleText && lyricSyncContainer) {
         if (enabled) {
@@ -77,7 +77,9 @@ function setLyricStatus(enabled) {
             lyricSyncContainer.classList.add('hidden');
         }
     }
-    saveAllSettings();
+    if (!skipSave) {
+        saveAllSettings();
+    }
     checkInputs();
 }
 
@@ -125,7 +127,7 @@ ipcRenderer.on('load-settings', (event, s) => {
         }
     }
 
-    setLyricStatus(!!s.lyricStatusEnabled);
+    setLyricStatus(s.lyricStatusEnabled !== undefined ? !!s.lyricStatusEnabled : true, true);
     setBackgroundStatus(!!s.runInBackground);
     checkInputs();
 });

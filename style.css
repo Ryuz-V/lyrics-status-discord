@@ -25,31 +25,31 @@ body {
 
 /* Scrollable Container */
 .container {
-    padding: 16px 20px;
+    padding: 16px 20px 30px 20px;
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    display: flex;
-    flex-direction: column;
+    display: block;
     min-height: 0;
 }
 
 /* Discord Themed Custom Scrollbar */
 .container::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
 }
 
 .container::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
 }
 
 .container::-webkit-scrollbar-thumb {
-    background-color: #1a1b1e;
-    border-radius: 3px;
+    background-color: #4e5058;
+    border-radius: 4px;
 }
 
 .container::-webkit-scrollbar-thumb:hover {
-    background-color: #111214;
+    background-color: #6d6f78;
 }
 
 .status-bar {
@@ -436,12 +436,13 @@ button:hover:not(:disabled) {
     border: 1px solid #111214;
     border-radius: 4px;
     padding: 10px;
-    height: 120px;
+    height: 140px;
+    min-height: 140px;
     overflow-y: auto;
     font-family: 'Consolas', monospace;
     font-size: 11px;
     color: #949ba4;
-    margin-bottom: 0px;
+    margin-bottom: 24px;
 }
 
 .logs::-webkit-scrollbar {
