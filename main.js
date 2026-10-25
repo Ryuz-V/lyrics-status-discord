@@ -448,7 +448,7 @@ ipcMain.on('stop-sync', async (event) => {
 });
 
 // Helper function untuk rotasi teks Custom Status (Text 1, 2, 3)
-async function applyCustomStatusRotation() {
+async function applyCustomStatusRotation(forceImmediate = false) {
     // Kumpulkan teks non-kosong dari Text 1, 2, 3
     const t1 = (store.get('customText1', '') || '').trim();
     const t2 = (store.get('customText2', '') || '').trim();
@@ -456,12 +456,12 @@ async function applyCustomStatusRotation() {
     const customTexts = [t1, t2, t3].filter(t => t.length > 0);
 
     if (customTexts.length === 0) {
-        // Semua teks custom kosong
-        if (lastCustomTextApplied !== null) {
-            await clearCustomStatus(activeDiscordToken);
-            lastCustomTextApplied = null;
+        // Semua teks custom kosong -> pastikan status di Discord dibersihkan
+        const res = await clearCustomStatus(activeDiscordToken);
+        if (res && res.success && !res.skipped) {
             logToUI("No custom text provided, status cleared.", "info");
         }
+        lastCustomTextApplied = null;
         return;
     }
 
@@ -473,8 +473,8 @@ async function applyCustomStatusRotation() {
     const now = Date.now();
     let shouldUpdate = false;
 
-    if (lastRotationTime === 0 || lastCustomTextApplied === null) {
-        // Pertama kali aktif atau baru beralih dari musik
+    if (forceImmediate || lastRotationTime === 0 || lastCustomTextApplied === null) {
+        // Pertama kali aktif atau baru beralih dari musik / pergantian lagu
         currentCustomIndex = 0;
         lastRotationTime = now;
         shouldUpdate = true;
@@ -494,9 +494,29 @@ async function applyCustomStatusRotation() {
         const res = await updateCustomStatus(targetText, activeDiscordToken);
         if (res && res.rateLimited) {
             logToUI(`[Rate Limit] Menunggu ${res.retryAfter}s untuk Custom Status`, "error");
+        } else if (res && res.success && !res.skipped) {
+            logToUI(`[Custom Status (${(currentCustomIndex % customTexts.length) + 1}/${customTexts.length})]: ${targetText}`, "success");
         }
+    }
+}
 
-        logToUI(`[Custom Status (${(currentCustomIndex % customTexts.length) + 1}/${customTexts.length})]: ${targetText}`, "success");
+// Helper untuk segera membersihkan lirik lagu sebelumnya dan beralih ke Custom Text (jika ada) atau Kosongkan status
+async function clearLyricAndApplyFallback(reason = '') {
+    lastLyricLine = null;
+    lastCustomTextApplied = null;
+
+    const t1 = (store.get('customText1', '') || '').trim();
+    const t2 = (store.get('customText2', '') || '').trim();
+    const t3 = (store.get('customText3', '') || '').trim();
+    const customTexts = [t1, t2, t3].filter(t => t.length > 0);
+
+    if (customTexts.length > 0) {
+        await applyCustomStatusRotation(true);
+    } else {
+        const res = await clearCustomStatus(activeDiscordToken);
+        if (res && res.success && !res.skipped) {
+            logToUI("Status lirik dibersihkan dari Discord.", "info");
+        }
     }
 }
 
@@ -530,8 +550,12 @@ async function syncLoop() {
             if (trackId !== currentTrackId) {
                 currentTrackId = trackId;
                 lastLyricLine = null;
+                currentLyrics = null;
                 console.log(`[Music] Now playing: ${trackInfo.name} by ${trackInfo.artist}`);
                 logToUI(`Now playing: ${trackInfo.name} by ${trackInfo.artist}`, "info");
+
+                // LANGSUNG hapus lirik lagu sebelumnya dan terapkan Custom Text (jika ada) atau kosongkan status
+                await clearLyricAndApplyFallback("Track changed");
 
                 try {
                     currentLyrics = await fetchLyrics(trackInfo.name, trackInfo.artist, trackInfo.album, trackInfo.durationMs);
@@ -542,26 +566,17 @@ async function syncLoop() {
                 }
 
                 if (!currentLyrics) {
-                    console.log(`[Lyrics] Lirik tidak ditemukan untuk "${trackInfo.name}" (${trackInfo.artist}). Status Discord dikosongkan.`);
-                    logToUI(`[Lyrics] Lirik tidak ditemukan untuk "${trackInfo.name}". Status Discord dikosongkan.`, "info");
-                    activeStatusMode = 'music';
-                    lastCustomTextApplied = null;
-                    await clearCustomStatus(activeDiscordToken);
+                    console.log(`[Lyrics] Lirik tidak ditemukan untuk "${trackInfo.name}" (${trackInfo.artist}). Status beralih ke Custom Text / Kosong.`);
+                    logToUI(`[Lyrics] Lirik tidak ditemukan untuk "${trackInfo.name}".`, "info");
+                    await clearLyricAndApplyFallback("Lyrics not found");
                 } else {
                     console.log(`[Lyrics] Ditemukan lirik sinkronisasi untuk "${trackInfo.name}"`);
                     logToUI(`Found synced lyrics for "${trackInfo.name}"`, "success");
-                    activeStatusMode = 'music';
-                    lastCustomTextApplied = null;
                 }
             }
 
             // Update lirik jika lirik tersedia
             if (currentLyrics) {
-                if (activeStatusMode !== 'music') {
-                    activeStatusMode = 'music';
-                    lastCustomTextApplied = null;
-                }
-
                 const timeSinceUpdate = trackInfo.lastUpdate ? (Date.now() - trackInfo.lastUpdate) : 0;
                 const interpolatedProgressMs = trackInfo.progressMs + timeSinceUpdate;
 
@@ -570,29 +585,42 @@ async function syncLoop() {
                 const offsetMs = Math.round(offsetSec * 1000);
                 const currentLine = getCurrentLyric(currentLyrics, interpolatedProgressMs + offsetMs);
 
-                if (currentLine && currentLine !== lastLyricLine) {
-                    const res = await updateCustomStatus(currentLine, activeDiscordToken);
-                    if (res && res.rateLimited) {
-                        console.warn(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`);
-                        logToUI(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`, "error");
-                    } else if (res && res.unauthorized) {
-                        console.error(`[Discord Error] ${res.message}`);
-                        logToUI(res.message, "error");
-                    } else if (res && res.success) {
-                        lastLyricLine = currentLine;
-                        if (!res.skipped) {
-                            logToUI(`Custom Status: ${currentLine}`);
+                if (currentLine) {
+                    activeStatusMode = 'music';
+                    lastCustomTextApplied = null;
+
+                    if (currentLine !== lastLyricLine) {
+                        const res = await updateCustomStatus(currentLine, activeDiscordToken);
+                        if (res && res.rateLimited) {
+                            console.warn(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`);
+                            logToUI(`[Rate Limit] Dibatasi sementara (${res.retryAfter}s)`, "error");
+                        } else if (res && res.unauthorized) {
+                            console.error(`[Discord Error] ${res.message}`);
+                            logToUI(res.message, "error");
+                        } else if (res && res.success) {
+                            lastLyricLine = currentLine;
+                            if (!res.skipped) {
+                                logToUI(`Custom Status: ${currentLine}`);
+                            }
                         }
+                    }
+                } else {
+                    // Intro atau jeda instrumental (belum/tidak ada lirik di detik saat ini)
+                    // Hapus lirik lama dan tampilkan Custom Text (jika ada) atau kosongkan status
+                    if (lastLyricLine !== null || activeStatusMode === 'music') {
+                        activeStatusMode = 'intro_or_custom';
+                        await clearLyricAndApplyFallback("Intro / Instrumental break");
+                    } else if (activeStatusMode === 'intro_or_custom') {
+                        await applyCustomStatusRotation();
                     }
                 }
             } else {
-                // Musik berputar tetapi lirik tidak ada / tidak bisa disinkronkan:
-                // Sesuai instruksi user: status dikosongkan (tidak menampilkan judul/artis dan tidak melempar ke Custom Text)
-                activeStatusMode = 'music';
-                lastCustomTextApplied = null;
-                if (lastLyricLine !== null) {
-                    lastLyricLine = null;
-                    await clearCustomStatus(activeDiscordToken);
+                // Musik berputar tetapi lirik tidak ada / tidak ditemukan
+                if (lastLyricLine !== null || activeStatusMode === 'music') {
+                    activeStatusMode = 'no_lyrics';
+                    await clearLyricAndApplyFallback("No lyrics");
+                } else {
+                    await applyCustomStatusRotation();
                 }
             }
         } else {

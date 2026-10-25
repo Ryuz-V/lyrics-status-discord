@@ -121,6 +121,7 @@ async function clearCustomStatus(token) {
     }
 
     try {
+        lastRequestTime = Date.now();
         await axios.patch(
             'https://discord.com/api/v9/users/@me/settings',
             {
