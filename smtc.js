@@ -10,14 +10,33 @@ let logCallback = null;
 let shouldKeepRunning = false;
 
 function findSmtcExe() {
-    const candidates = [
-        path.join(__dirname, 'bin', 'smtc-reader.exe'),
-        __dirname.includes('app.asar') ? path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'bin', 'smtc-reader.exe') : null,
-        process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', 'bin', 'smtc-reader.exe') : null,
-        process.resourcesPath ? path.join(process.resourcesPath, 'bin', 'smtc-reader.exe') : null,
-        path.join(process.cwd(), 'bin', 'smtc-reader.exe'),
-        path.join(process.cwd(), 'resources', 'app.asar.unpacked', 'bin', 'smtc-reader.exe')
-    ].filter(Boolean);
+    let candidates = [];
+
+    // Prioritas 1: Jika berjalan di Electron packaged (app.asar.unpacked)
+    if (process.resourcesPath) {
+        candidates.push(path.join(process.resourcesPath, 'app.asar.unpacked', 'bin', 'smtc-reader.exe'));
+        candidates.push(path.join(process.resourcesPath, 'bin', 'smtc-reader.exe'));
+    }
+
+    if (__dirname.includes('app.asar')) {
+        candidates.push(path.join(__dirname.replace(/app\.asar(?=[/\\]|$)/, 'app.asar.unpacked'), 'bin', 'smtc-reader.exe'));
+    }
+
+    // Prioritas 2: Development mode (npm start)
+    candidates.push(path.join(__dirname, 'bin', 'smtc-reader.exe'));
+    candidates.push(path.join(process.cwd(), 'bin', 'smtc-reader.exe'));
+    candidates.push(path.join(process.cwd(), 'resources', 'app.asar.unpacked', 'bin', 'smtc-reader.exe'));
+
+    // PENTING: Windows OS TIDAK BISA menjalankan file .exe dari dalam archive app.asar.
+    // Filter semua kandidat agar TIDAK ADA yang merujuk ke dalam virtual archive app.asar.
+    candidates = candidates.filter(p => {
+        if (!p) return false;
+        const normalized = p.replace(/\\/g, '/');
+        if (normalized.includes('app.asar/') && !normalized.includes('app.asar.unpacked/')) {
+            return false;
+        }
+        return true;
+    });
 
     for (const p of candidates) {
         try {
@@ -26,7 +45,12 @@ function findSmtcExe() {
             }
         } catch (e) { }
     }
-    return candidates[0];
+
+    // Fallback: pastikan selalu ke app.asar.unpacked jika di packaged app
+    if (process.resourcesPath) {
+        return path.join(process.resourcesPath, 'app.asar.unpacked', 'bin', 'smtc-reader.exe');
+    }
+    return path.join(__dirname, 'bin', 'smtc-reader.exe');
 }
 
 function startSMTCListener(onUpdate, onLog) {
@@ -37,6 +61,7 @@ function startSMTCListener(onUpdate, onLog) {
     shouldKeepRunning = true;
 
     const exePath = findSmtcExe();
+    console.log('[SMTC] Menggunakan executable path:', exePath);
 
     if (!fs.existsSync(exePath)) {
         console.error('[SMTC] smtc-reader.exe tidak ditemukan di:', exePath);

@@ -23,7 +23,8 @@
       "!**/*.map",
       "!.env",
       "!guide.txt",
-      "!text.txt"
+      "!text.txt",
+      "!smtc-reader-src/**"
     ],
     "win": {
       "target": [

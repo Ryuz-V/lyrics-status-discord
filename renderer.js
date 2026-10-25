@@ -18,8 +18,6 @@ const lyricSyncContainer = document.getElementById('lyricSyncContainer');
 const mediaSourceSelect = document.getElementById('mediaSourceSelect');
 const lyricsOffsetInput = document.getElementById('lyricsOffset');
 const offsetValueText = document.getElementById('offsetValueText');
-
-// DOM Elements - Actions & Status
 const btnConnect = document.getElementById('btnConnect');
 const btnDisconnect = document.getElementById('btnDisconnect');
 const btnRestart = document.getElementById('btnRestart');

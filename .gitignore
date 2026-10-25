@@ -3,3 +3,10 @@ node_modules
 .vscode
 text.txt
 dist
+*.pdb
+**/obj/
+smtc-reader-src/bin/
+build/
+**/bin/
+text.txt
+scratch_test_smtc.pdb
